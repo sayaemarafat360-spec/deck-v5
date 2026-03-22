@@ -23,10 +23,12 @@ import kotlin.math.*
 fun DeckSplashScreen(onFinished: () -> Unit) {
 
     // ── Phase controller ──────────────────────────────────────────────
-    var phase by remember { mutableStateOf(0) }
+    // Start at phase=1 so the background and particles are visible on the very
+    // first frame. Starting at 0 meant a ~580ms window of total invisibility
+    // (80ms delay + 500ms bgAlpha animation) making the splash appear broken.
+    var phase by remember { mutableStateOf(1) }
 
     LaunchedEffect(Unit) {
-        delay(80);  phase = 1   // particles + bg pulse starts
         delay(350); phase = 2   // logo disc erupts
         delay(280); phase = 3   // waveform draws
         delay(220); phase = 4   // title slides up

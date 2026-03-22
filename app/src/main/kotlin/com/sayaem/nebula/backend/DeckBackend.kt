@@ -39,8 +39,18 @@ object DeckBackend {
     suspend fun signInWithGoogle(idToken: String): Result<FirebaseUser> {
         return try {
             val credential = GoogleAuthProvider.getCredential(idToken, null)
-            val result     = auth.signInWithCredential(credential).await()
-            val user       = result.user ?: throw Exception("Sign-in failed")
+            val currentUser = auth.currentUser
+
+            // If the user is already signed in anonymously, LINK the Google credential
+            // to that anonymous account instead of creating a second account.
+            // signInWithCredential on an existing anon session throws an exception.
+            val result = if (currentUser != null && currentUser.isAnonymous) {
+                currentUser.linkWithCredential(credential).await()
+            } else {
+                auth.signInWithCredential(credential).await()
+            }
+
+            val user = result.user ?: throw Exception("Sign-in failed — no user returned")
             createOrUpdateUserDoc(user)
             saveFcmToken()
             Result.success(user)

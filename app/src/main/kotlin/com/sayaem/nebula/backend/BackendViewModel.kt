@@ -123,7 +123,8 @@ class BackendViewModel(app: Application) : AndroidViewModel(app) {
                     else  -> _message.value = "Sign-in error (${e.statusCode})"
                 }
             } catch (e: Exception) {
-                _message.value = null
+                // Never swallow silently — surface the real error so it can be diagnosed
+                _message.value = "Sign-in failed: ${e.message ?: "unknown error"}"
             } finally {
                 _isSyncing.value = false
             }
