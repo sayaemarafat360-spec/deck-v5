@@ -80,13 +80,14 @@ class BackendViewModel(app: Application) : AndroidViewModel(app) {
     // NOTE: You need to add a Web OAuth client in Firebase Console first:
     // Authentication → Sign-in method → Google → enable → copy Web client ID
     // Then add to strings.xml: <string name="default_web_client_id">YOUR_WEB_CLIENT_ID</string>
-    fun getGoogleSignInIntent(): Intent {
+    // activity must be the calling Activity — GoogleSignIn.getClient() requires
+    // an Activity context, NOT Application context (causes ClassCastException otherwise)
+    fun getGoogleSignInIntent(activity: android.app.Activity): Intent {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(getApplication<Application>()
-                .getString(R.string.default_web_client_id))
+            .requestIdToken(activity.getString(R.string.default_web_client_id))
             .requestEmail()
             .build()
-        return GoogleSignIn.getClient(getApplication(), gso).signInIntent
+        return GoogleSignIn.getClient(activity, gso).signInIntent
     }
 
     fun handleGoogleSignInResult(result: ActivityResult) {

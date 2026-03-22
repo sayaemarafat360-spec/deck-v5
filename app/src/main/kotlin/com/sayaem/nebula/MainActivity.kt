@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        setContent { DeckRoot(vm, backendVm, onGoogleSignIn = { googleSignInLauncher.launch(backendVm.getGoogleSignInIntent()) }) }
+        setContent { DeckRoot(vm, backendVm, onGoogleSignIn = { googleSignInLauncher.launch(backendVm.getGoogleSignInIntent(this)) }) }
         requestPermissions()
     }
 
@@ -171,21 +171,18 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
             BackHandler(enabled = tabBackStack.size > 1) { tabBackStack.removeLastOrNull() }
             BackHandler(enabled = tabBackStack.size <= 1) { /* on Home root — swallow to prevent exit */ }
 
-            // ── Splash ───────────────────────────────────────────────
+            // ── Splash / Onboarding / Main — mutually exclusive screens ─
+            // NOTE: Do NOT use return@Box or return@DeckTheme here — early
+            // returns inside a composable lambda corrupt Compose's slot table
+            // and cause ArrayIndexOutOfBoundsException on startup.
             if (showSplash) {
                 DeckSplashScreen(onFinished = { showSplash = false })
-                return@Box
-            }
-
-            // ── Onboarding ────────────────────────────────────────────
-            if (showOnboarding) {
+            } else if (showOnboarding) {
                 OnboardingScreen(onDone = {
                     vm.store.markOnboardingDone()
                     showOnboarding = false
                 })
-                return@DeckTheme
-            }
-
+            } else {
             // ── Main scaffold ─────────────────────────────────────────
             Scaffold(
                 containerColor = Color.Transparent,
@@ -414,6 +411,7 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                     )
                 }
             }
+            } // end else (main content — not splash, not onboarding)
         }
     }
 }
