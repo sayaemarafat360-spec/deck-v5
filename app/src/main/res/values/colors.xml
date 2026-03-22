@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="deck_bg">#FF080810</color>
+    <color name="deck_primary">#FF7B6EFF</color>
+    <color name="deck_secondary">#FFFF6B9D</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

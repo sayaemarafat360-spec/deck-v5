@@ -1,0 +1,82 @@
+workflows:
+  android-debug:
+    name: Deck — Debug APK
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 17
+
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+
+    scripts:
+      - name: Get Gradle wrapper jar and set fixed keystore
+        script: |
+          mkdir -p gradle/wrapper
+          curl -fL \
+            "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+          # Use our bundled debug keystore so SHA-1 is always predictable
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+          echo "=== Using fixed debug keystore SHA-1: ==="
+          keytool -list -v -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey -storepass android -keypass android 2>/dev/null \
+            | grep -E "SHA1|SHA256"
+
+      - name: Build debug APK
+        script: ./gradlew :app:assembleDebug --no-daemon
+
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
+
+  android-release:
+    name: Deck — Release APK
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 17
+
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+
+    scripts:
+      - name: Get Gradle wrapper jar and set fixed keystore
+        script: |
+          mkdir -p gradle/wrapper
+          curl -fL \
+            "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+          # Use our bundled debug keystore so SHA-1 is always predictable
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+          echo "=== Using fixed debug keystore SHA-1: ==="
+          keytool -list -v -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey -storepass android -keypass android 2>/dev/null \
+            | grep -E "SHA1|SHA256"
+
+      - name: Build release APK
+        script: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Build App Bundle
+        script: ./gradlew :app:bundleRelease --no-daemon
+
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
+      - app/build/outputs/bundle/release/*.aab
+
+    publishing:
+      email:
+        recipients:
+          - your-email@gmail.com
+        notify:
+          success: true
+          failure: true
