@@ -473,7 +473,15 @@ fun DeckRoot(
                             startIndex   = videoStartIdx,
                             player       = vm.player.playerOrNull,
                             onPauseMusic = { if (vm.playback.value.isPlaying) vm.player.togglePlay() },
-                            onBack       = { videoQueue = emptyList() }
+                            onBack       = { videoQueue = emptyList() },
+                            onToggleVideoFavorite = { id, isFav ->
+                                // Sync to MainViewModel so Favorites tab also reflects change
+                                val song = (vm.songs.value + vm.videos.value).firstOrNull { it.id == id }
+                                if (song != null) {
+                                    val currentlyFav = vm.isFavorite(id)
+                                    if (isFav != currentlyFav) vm.toggleFavorite(song)
+                                }
+                            }
                         )
                     }
                 }
