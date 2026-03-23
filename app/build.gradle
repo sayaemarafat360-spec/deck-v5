@@ -9,6 +9,26 @@ android {
     namespace 'com.sayaem.nebula'
     compileSdk 34
 
+    // ── Signing ─────────────────────────────────────────────────────────
+    // Explicitly use the keystore committed to the repo.
+    // Without this, Gradle falls back to ~/.android/debug.keystore which on
+    // Codemagic is auto-generated per-machine with a DIFFERENT SHA-1 than
+    // what you registered in Firebase — causing Google Sign-In error 10.
+    signingConfigs {
+        debug {
+            storeFile     file('../keystore/debug.keystore')
+            storePassword 'android'
+            keyAlias      'androiddebugkey'
+            keyPassword   'android'
+        }
+        release {
+            storeFile     file('../keystore/debug.keystore')
+            storePassword 'android'
+            keyAlias      'androiddebugkey'
+            keyPassword   'android'
+        }
+    }
+
     defaultConfig {
         applicationId "com.sayaem.nebula"
         minSdk 21
@@ -20,10 +40,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
 
