@@ -134,8 +134,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // Phone call auto-pause/resume
-        registerPhoneStateListener()
+        // Phone call auto-pause/resume is registered from MainActivity
+        // after READ_PHONE_STATE permission is granted (see MainActivity.requestPermissions)
 
         // Track song changes
         viewModelScope.launch {
@@ -480,27 +480,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     @Suppress("DEPRECATION")
-    private fun registerPhoneStateListener() {
-        val tm = getApplication<Application>()
-            .getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // API 31+ — use TelephonyCallback
-            tm.registerTelephonyCallback(
-                getApplication<Application>().mainExecutor,
-                object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-                    override fun onCallStateChanged(state: Int) {
+    fun registerPhoneStateListener() {
+        // Called from MainActivity AFTER permissions are granted — not in init.
+        // registerTelephonyCallback() throws SecurityException if READ_PHONE_STATE
+        // is not yet granted, which crashes the ViewModel during construction.
+        try {
+            val app = getApplication<Application>()
+            // Check permission is actually granted before registering
+            val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                app, android.Manifest.permission.READ_PHONE_STATE
+            )
+            if (permissionCheck != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+
+            val tm = app.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                tm.registerTelephonyCallback(
+                    app.mainExecutor,
+                    object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                        override fun onCallStateChanged(state: Int) { handleCallState(state) }
+                    }
+                )
+            } else {
+                tm.listen(object : PhoneStateListener() {
+                    override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                         handleCallState(state)
                     }
-                }
-            )
-        } else {
-            // Pre-API 31 — use deprecated PhoneStateListener
-            tm.listen(object : PhoneStateListener() {
-                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                    handleCallState(state)
-                }
-            }, PhoneStateListener.LISTEN_CALL_STATE)
-        }
+                }, PhoneStateListener.LISTEN_CALL_STATE)
+            }
+        } catch (_: SecurityException) {
+            // Permission denied or revoked — phone call pause simply won't work
+        } catch (_: Exception) {}
     }
 
     private fun handleCallState(state: Int) {

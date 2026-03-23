@@ -53,7 +53,11 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         val granted = results.values.any { it }
-        if (granted) try { vm.scanMedia() } catch (_: Exception) {}
+        if (granted) {
+            try { vm.scanMedia() } catch (_: Exception) {}
+            // Register phone state listener now that READ_PHONE_STATE may be granted
+            try { vm.registerPhoneStateListener() } catch (_: Exception) {}
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,6 +78,8 @@ class MainActivity : ComponentActivity() {
             } else {
                 add(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
+            // READ_PHONE_STATE for call auto-pause — included on all API levels
+            add(Manifest.permission.READ_PHONE_STATE)
         }
         permissionLauncher.launch(perms.toTypedArray())
     }
