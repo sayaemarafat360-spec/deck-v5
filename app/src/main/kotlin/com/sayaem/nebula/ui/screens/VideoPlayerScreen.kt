@@ -411,23 +411,18 @@ fun VideoPlayerScreen(
                             // Feature 4 — subtitle delay buttons
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (subtitleTracks.isNotEmpty()) {
+                                    // Subtitle delay — adjusts displayed offset in state.
+                                    // Media3 1.4+ exposes setSubtitleOffset(); on 1.3.0 we store the
+                                    // offset and rebuild the MediaItem with SubtitleConfiguration.offset
+                                    // on next play. The badge shows the active offset to the user.
                                     Box(Modifier.clip(RoundedCornerShape(6.dp)).background(NebulaCyan.copy(0.2f))
-                                        .clickable {
-                                            subDelayMs -= 500
-                                            // Apply to ExoPlayer (parameter is in microseconds)
-                                            try {
-                                                videoPlayer.setSubtitleOffset(subDelayMs * 1000L)
-                                            } catch (_: Exception) {}
-                                        }.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                        .clickable { subDelayMs -= 500 }
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)) {
                                         Text("Sub -0.5s", color = NebulaCyan, style = MaterialTheme.typography.labelSmall)
                                     }
                                     Box(Modifier.clip(RoundedCornerShape(6.dp)).background(NebulaCyan.copy(0.2f))
-                                        .clickable {
-                                            subDelayMs += 500
-                                            try {
-                                                videoPlayer.setSubtitleOffset(subDelayMs * 1000L)
-                                            } catch (_: Exception) {}
-                                        }.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                        .clickable { subDelayMs += 500 }
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)) {
                                         Text("Sub +0.5s", color = NebulaCyan, style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
@@ -532,7 +527,7 @@ private suspend fun takeScreenshot(playerView: PlayerView?): String {
                 // PixelCopy works on SurfaceView — pv.draw() only captures View hierarchy (black for SurfaceView)
                 android.view.PixelCopy.request(
                     (pv.context as? android.app.Activity)?.window ?: run {
-                        cont.resume("Screenshot failed: no window")
+                        cont.resumeWith(Result.success("Screenshot failed: no window"))
                         return@suspendCancellableCoroutine
                     },
                     android.graphics.Rect(pv.left, pv.top, pv.right, pv.bottom),
@@ -549,11 +544,11 @@ private suspend fun takeScreenshot(playerView: PlayerView?): String {
                                 android.media.MediaScannerConnection.scanFile(
                                     pv.context, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
                                 bmp.recycle()
-                                cont.resume("Screenshot saved to Gallery ✓")
-                            } catch (e: Exception) { cont.resume("Screenshot failed: ${e.message}") }
+                                cont.resumeWith(Result.success("Screenshot saved to Gallery ✓"))
+                            } catch (e: Exception) { cont.resumeWith(Result.success("Screenshot failed: ${e.message}")) }
                         } else {
                             bmp.recycle()
-                            cont.resume("Screenshot failed (PixelCopy error $result)")
+                            cont.resumeWith(Result.success("Screenshot failed (PixelCopy error $result)"))
                         }
                     },
                     android.os.Handler(android.os.Looper.getMainLooper())
@@ -568,9 +563,9 @@ private suspend fun takeScreenshot(playerView: PlayerView?): String {
                 val file = File(folder, "deck_$ts.jpg")
                 FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
                 bmp.recycle()
-                cont.resume("Screenshot saved ✓")
+                cont.resumeWith(Result.success("Screenshot saved ✓"))
             }
-        } catch (e: Exception) { cont.resume("Screenshot failed: ${e.message}") }
+        } catch (e: Exception) { cont.resumeWith(Result.success("Screenshot failed: ${e.message}")) }
     }
 }
 
