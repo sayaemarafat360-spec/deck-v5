@@ -99,7 +99,7 @@ class DeckCastManager(private val context: Context) {
             val loadRequest = MediaLoadRequestData.Builder()
                 .setMediaInfo(mediaInfo)
                 .setAutoplay(true)
-                .setCurrentTime(position.toDouble() / 1000.0)
+                .setCurrentTime(position)  // Long ms
                 .build()
             client.load(loadRequest)
             _castState.value = CastState.PLAYING

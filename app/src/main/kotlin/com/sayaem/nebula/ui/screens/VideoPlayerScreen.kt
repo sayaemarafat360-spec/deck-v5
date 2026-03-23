@@ -17,6 +17,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -87,6 +89,7 @@ private enum class LoopMode(val icon: ImageVector) {
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoPlayerScreen(
     videos: List<Song>,
@@ -186,20 +189,6 @@ fun VideoPlayerScreen(
                 activity.window.attributes = it
             }
         }
-    }
-    // Single LaunchedEffect(idx) — loads video AND reloads per-video persistent state
-    LaunchedEffect(idx) {
-        if (idx != startIndex) loadVideo(video)
-        // Reload per-video persistent state for the new video
-        isFavorite  = prefs.getBoolean("fav_${video.id}", false)
-        aspect      = AspectMode.entries.getOrElse(
-            prefs.getInt("aspect_${video.id}", AspectMode.FIT.ordinal)) { AspectMode.FIT }
-        subDelayMs  = prefs.getLong("sub_delay_${video.id}", 0L)
-        abA         = prefs.getLong("ab_a_${video.id}", -1L)
-        abB         = prefs.getLong("ab_b_${video.id}", -1L)
-        abActive    = abA >= 0 && abB >= 0
-        bookmarks   = prefs.getString("bm_${video.id}", "")
-            ?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
     }
     BackHandler { onBack() }
 
@@ -384,14 +373,29 @@ fun VideoPlayerScreen(
     LaunchedEffect(subSizeScale) { prefs.edit().putFloat("sub_size", subSizeScale).apply() }
     LaunchedEffect(subDelayMs)   {
         prefs.edit().putLong("sub_delay_${video.id}", subDelayMs).apply()
-        // Media3 1.4.1+ real subtitle offset (microseconds)
-        try { vp.setSubtitleOffset(subDelayMs * 1_000L) } catch (_: Exception) {}
+        // Subtitle offset stored — applied via SubtitleConfiguration on next video load
+        // ExoPlayer's public Player API does not expose setSubtitleOffset directly
     }
     LaunchedEffect(abA)          { prefs.edit().putLong("ab_a_${video.id}", abA).apply() }
     LaunchedEffect(abB)          { prefs.edit().putLong("ab_b_${video.id}", abB).apply() }
     LaunchedEffect(bookmarks)    {
         val str = bookmarks.joinToString(",")
         prefs.edit().putString("bm_${video.id}", str).apply()
+    }
+
+    // Single LaunchedEffect(idx) — loads video AND reloads all per-video persistent state
+    // Must be AFTER state declarations so all variables are in scope
+    LaunchedEffect(idx) {
+        if (idx != startIndex) loadVideo(video)
+        isFavorite   = prefs.getBoolean("fav_${video.id}", false)
+        aspect       = AspectMode.entries.getOrElse(
+            prefs.getInt("aspect_${video.id}", AspectMode.FIT.ordinal)) { AspectMode.FIT }
+        subDelayMs   = prefs.getLong("sub_delay_${video.id}", 0L)
+        abA          = prefs.getLong("ab_a_${video.id}", -1L)
+        abB          = prefs.getLong("ab_b_${video.id}", -1L)
+        abActive     = abA >= 0 && abB >= 0
+        bookmarks    = prefs.getString("bm_${video.id}", "")
+            ?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
     }
 
     // Sleep timer
@@ -864,7 +868,7 @@ fun VideoPlayerScreen(
                         }
                         // PiP / resize
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            BarBtn(Icons.Filled.PictureInPictureMobile) {
+                            BarBtn(Icons.Filled.PictureInPicture) {
                                 try { activity?.enterPictureInPictureMode(
                                     android.app.PictureInPictureParams.Builder()
                                         .setAspectRatio(Rational(16, 9)).build())
@@ -1686,7 +1690,7 @@ private fun SleepPickerSheet(currentMins: Int, onPick: (Int) -> Unit, onDismiss:
         Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
             .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .background(Color(0xFF141420)).clickable(enabled = false) {}
-            .navigationBarsPadding().padding(horizontal = 20.dp, top = 14.dp, bottom = 20.dp)) {
+            .navigationBarsPadding().padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 20.dp)) {
             Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(0.2f)).align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(14.dp))
@@ -1830,7 +1834,7 @@ fun SubtitleDelaySheet(delayMs: Long, onChange: (Long) -> Unit, onDismiss: () ->
             Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .background(Color(0xFF141420)).clickable(enabled = false) {}
-                .navigationBarsPadding().padding(horizontal = 20.dp, top = 14.dp, bottom = 24.dp)
+                .navigationBarsPadding().padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 24.dp)
         ) {
             Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(0.2f)).align(Alignment.CenterHorizontally))
@@ -1904,7 +1908,7 @@ fun SubtitleSizeSheet(scale: Float, onChange: (Float) -> Unit, onDismiss: () -> 
             Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .background(Color(0xFF141420)).clickable(enabled = false) {}
-                .navigationBarsPadding().padding(horizontal = 20.dp, top = 14.dp, bottom = 24.dp)
+                .navigationBarsPadding().padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 24.dp)
         ) {
             Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(0.2f)).align(Alignment.CenterHorizontally))
@@ -2060,7 +2064,7 @@ fun VideoEqSheet(
             Modifier.fillMaxWidth().fillMaxHeight(0.62f).align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .background(Color(0xFF141420)).clickable(enabled = false) {}
-                .navigationBarsPadding().padding(horizontal = 20.dp, top = 14.dp, bottom = 20.dp)
+                .navigationBarsPadding().padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 20.dp)
         ) {
             Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(0.2f)).align(Alignment.CenterHorizontally))
@@ -2180,7 +2184,7 @@ fun CastSheet(
             Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                 .background(Color(0xFF141420)).clickable(enabled = false) {}
-                .navigationBarsPadding().padding(horizontal = 20.dp, top = 14.dp, bottom = 32.dp)
+                .navigationBarsPadding().padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 32.dp)
         ) {
             Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(0.2f)).align(Alignment.CenterHorizontally))
@@ -2275,7 +2279,7 @@ fun CastSheet(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         if (castState == CastState.PLAYING) "Stop casting"
-                        else "Cast "${video.title}"",
+                        else "Cast: ${video.title}",
                         fontWeight = FontWeight.Bold
                     )
                 }
