@@ -102,7 +102,7 @@ fun FolderContentScreen(
             selectedTab == 1 && videos.isNotEmpty() -> {
                 LazyColumn(
                     Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, bottom = 200.dp, top = 12.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 200.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(videos, key = { it.id }) { video ->
