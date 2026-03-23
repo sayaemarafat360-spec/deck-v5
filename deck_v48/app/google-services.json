@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "757949659304",
+    "project_id": "deck-7f1ce",
+    "storage_bucket": "deck-7f1ce.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:757949659304:android:6e50f908e9872e6ede2a9d",
+        "android_client_info": {
+          "package_name": "com.sayaem.nebula"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "757949659304-k828uo7u93jtk10a3b40cak42jfhc2s3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sayaem.nebula",
+            "certificate_hash": "fc8a94025582da94013fccf2fd39bb7aed6124c4"
+          }
+        },
+        {
+          "client_id": "757949659304-vqc4rvipgkc63kt5sr5gndjnfrodeat1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBVo6jRZxD9XQdcaw7cs5qi4BfGLUQGqDs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "757949659304-vqc4rvipgkc63kt5sr5gndjnfrodeat1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

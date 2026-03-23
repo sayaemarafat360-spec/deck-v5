@@ -1,0 +1,158 @@
+workflows:
+  android-debug:
+    name: Deck — Debug APK
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 17
+
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+
+    scripts:
+      # ── Step 1: Bootstrap Gradle wrapper ──────────────────────────────
+      - name: Get Gradle wrapper jar
+        script: |
+          mkdir -p gradle/wrapper
+          curl -fL \
+            "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+
+      # ── Step 2: Install the repo keystore as the system debug keystore ─
+      # This guarantees the same SHA-1 fingerprint on every Codemagic build.
+      # The keystore at keystore/debug.keystore is committed to the repo.
+      - name: Install fixed debug keystore
+        script: |
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+          echo "Keystore installed at ~/.android/debug.keystore"
+
+      # ── Step 3: PRINT SHA-1 — copy this into Firebase Console ─────────
+      # IMPORTANT: After adding the SHA-1 to Firebase you MUST also:
+      #   1. Re-download google-services.json from Firebase Console
+      #   2. Replace app/google-services.json in your project repo
+      #   3. Commit and push the new file
+      #   Without step 1-3, Google Sign-in will fail with NETWORK_ERROR
+      #   even if the SHA-1 is correct.
+      - name: "PRINT SHA-1 FINGERPRINT — Add this to Firebase Console"
+        script: |
+          echo ""
+          echo "========================================================"
+          echo "  COPY THE SHA-1 BELOW INTO FIREBASE CONSOLE"
+          echo "  Firebase Console → Project Settings → Android App"
+          echo "  → Add fingerprint"
+          echo ""
+          echo "  CRITICAL NEXT STEP AFTER ADDING SHA-1:"
+          echo "  Download the new google-services.json from Firebase"
+          echo "  and replace app/google-services.json in your repo."
+          echo "  Google Sign-in will return NETWORK_ERROR until you do."
+          echo "========================================================"
+          echo ""
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep -E "^(Owner|Issuer|Serial|Valid|Certificate fingerprints|SHA1|SHA256|MD5)"
+          echo ""
+          echo "--- SHA1 only (paste this into Firebase) ---"
+          keytool -list \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep "SHA1"
+          echo "--- END ---"
+          echo ""
+
+      # ── Step 4: Build ─────────────────────────────────────────────────
+      - name: Build debug APK
+        script: ./gradlew :app:assembleDebug --no-daemon
+
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
+
+  android-release:
+    name: Deck — Release APK
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      java: 17
+
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+
+    scripts:
+      # ── Step 1: Bootstrap Gradle wrapper ──────────────────────────────
+      - name: Get Gradle wrapper jar
+        script: |
+          mkdir -p gradle/wrapper
+          curl -fL \
+            "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+
+      # ── Step 2: Install the repo keystore as the system debug keystore ─
+      - name: Install fixed debug keystore
+        script: |
+          mkdir -p ~/.android
+          cp keystore/debug.keystore ~/.android/debug.keystore
+          echo "Keystore installed at ~/.android/debug.keystore"
+
+      # ── Step 3: PRINT SHA-1 — copy this into Firebase Console ─────────
+      # IMPORTANT: After adding SHA-1, re-download google-services.json from
+      # Firebase Console and replace app/google-services.json in your repo.
+      - name: "PRINT SHA-1 FINGERPRINT — Add this to Firebase Console"
+        script: |
+          echo ""
+          echo "========================================================"
+          echo "  COPY THE SHA-1 BELOW INTO FIREBASE CONSOLE"
+          echo "  Firebase Console → Project Settings → Android App"
+          echo "  → Add fingerprint"
+          echo ""
+          echo "  AFTER ADDING SHA-1: re-download google-services.json"
+          echo "  and replace app/google-services.json in your repo."
+          echo "========================================================"
+          echo ""
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep -E "^(Owner|Issuer|Serial|Valid|Certificate fingerprints|SHA1|SHA256|MD5)"
+          echo ""
+          echo "--- SHA1 only (paste this into Firebase) ---"
+          keytool -list \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep "SHA1"
+          echo "--- END ---"
+          echo ""
+
+      # ── Step 4: Build ─────────────────────────────────────────────────
+      - name: Build release APK
+        script: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Build App Bundle
+        script: ./gradlew :app:bundleRelease --no-daemon
+
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
+      - app/build/outputs/bundle/release/*.aab
+
+    publishing:
+      email:
+        recipients:
+          - your-email@gmail.com
+        notify:
+          success: true
+          failure: true

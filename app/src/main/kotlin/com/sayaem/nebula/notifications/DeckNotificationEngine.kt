@@ -5,12 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
-import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -19,55 +15,52 @@ import com.sayaem.nebula.data.local.LocalDataStore
 import java.util.Calendar
 import kotlin.random.Random
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DECK NOTIFICATION ENGINE
-// Handles all local push notifications — 10 daily engagement types.
-// Each type uses real user data from LocalDataStore so messages are personal.
-// ═══════════════════════════════════════════════════════════════════════════
 class DeckNotificationEngine(private val context: Context) {
 
     companion object {
-        // ── Channels ──────────────────────────────────────────────────
-        const val CH_PLAYBACK   = "deck_playback"
-        const val CH_ENGAGE     = "deck_engage"     // daily engagement
-        const val CH_ACTIVITY   = "deck_activity"   // in-session (milestone, streak)
-        const val CH_TIPS       = "deck_tips"        // tips & discovery
+        const val CH_PLAYBACK  = "deck_playback"
+        const val CH_ENGAGE    = "deck_engage"
+        const val CH_ACTIVITY  = "deck_activity"
+        const val CH_TIPS      = "deck_tips"
 
-        // ── Notification IDs ──────────────────────────────────────────
-        const val ID_PLAYBACK   = 1
-        const val ID_COMEBACK   = 100
-        const val ID_STREAK     = 101
-        const val ID_TOP_SONG   = 102
-        const val ID_WEEKLY     = 103
-        const val ID_MOOD       = 104
-        const val ID_DISCOVERY  = 105
-        const val ID_MILESTONE  = 106
-        const val ID_NEW_SONGS  = 107
-        const val ID_QUEUE_HINT = 108
-        const val ID_TIP        = 109
+        const val ID_PLAYBACK  = 1
+        const val ID_BASE      = 200  // engagement IDs start here
 
-        // ── Alarm actions ─────────────────────────────────────────────
-        const val ACTION_DAILY_NOTIF = "com.sayaem.nebula.DAILY_NOTIF"
-        const val EXTRA_NOTIF_TYPE   = "notif_type"
+        const val ACTION_DAILY = "com.sayaem.nebula.DAILY_NOTIF"
+        const val EXTRA_TYPE   = "notif_type"
 
-        // ── Prefs keys ────────────────────────────────────────────────
-        private const val PREFS = "deck_notif_engine"
+        private const val PREFS              = "deck_notif_engine"
         private const val KEY_LAST_SCHEDULE  = "last_sched_day"
-        private const val KEY_SONG_COUNT_PREV = "prev_song_count"
-        private const val KEY_STREAK          = "listening_streak"
-        private const val KEY_STREAK_LAST_DAY = "streak_last_day"
-        // ── Notification type constants ───────────────────────────────
-        const val NOTIF_COMEBACK      = 1
-        const val NOTIF_STREAK        = 2
-        const val NOTIF_TOP_SONG      = 3
-        const val NOTIF_WEEKLY_STATS  = 4
-        const val NOTIF_MOOD_MORNING  = 5
-        const val NOTIF_MOOD_EVENING  = 6
-        const val NOTIF_DISCOVERY     = 7
-        const val NOTIF_MILESTONE     = 8
-        const val NOTIF_NEW_SONGS     = 9
-        const val NOTIF_QUEUE_HINT    = 10
-        const val NOTIF_TIP           = 11
+        private const val KEY_STREAK         = "listening_streak"
+        private const val KEY_STREAK_DAY     = "streak_last_day"
+        private const val KEY_FIRST_RUN      = "first_run_done"
+        private const val KEY_LAST_MILESTONE = "last_milestone"
+
+        // ── 20+ notification type constants ──────────────────────────────
+        const val T_COMEBACK_1    =  1  // "Your music misses you"
+        const val T_COMEBACK_2    =  2  // "Time for some music?"
+        const val T_COMEBACK_3    =  3  // "Still there? Music waiting"
+        const val T_STREAK        =  4
+        const val T_TOP_SONG      =  5
+        const val T_WEEKLY_STATS  =  6
+        const val T_MOOD_MORNING  =  7
+        const val T_MOOD_NOON     =  8  // new
+        const val T_MOOD_EVENING  =  9
+        const val T_MOOD_NIGHT    = 10  // new
+        const val T_DISCOVERY     = 11
+        const val T_MILESTONE     = 12
+        const val T_NEW_SONGS     = 13
+        const val T_QUEUE_HINT    = 14
+        const val T_TIP_GESTURE   = 15  // gesture tip
+        const val T_TIP_EQ        = 16  // EQ tip
+        const val T_TIP_LYRICS    = 17  // lyrics tip
+        const val T_TIP_SLEEP     = 18  // sleep timer tip
+        const val T_TIP_SEARCH    = 19  // search tip
+        const val T_TIP_GENERAL   = 20  // general tip
+        const val T_INVITE        = 21  // "Share Deck with friends"
+        const val T_PLAYLIST_HINT = 22  // "Create a playlist"
+        const val T_VIDEO_HINT    = 23  // "Try the video player"
+        const val T_FAVORITE_HINT = 24  // "Favorite your best songs"
     }
 
     private val nm    = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -77,158 +70,216 @@ class DeckNotificationEngine(private val context: Context) {
 
     init { createChannels() }
 
-    // ── Channel setup ─────────────────────────────────────────────────────
     private fun createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         nm.createNotificationChannel(NotificationChannel(
             CH_PLAYBACK, "Now Playing", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Playback controls in notification shade"; setShowBadge(false)
+            setShowBadge(false)
         })
         nm.createNotificationChannel(NotificationChannel(
             CH_ENGAGE, "Daily Music", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Daily listening reminders and stats"
+            description = "Daily listening reminders and your music stats"
         })
         nm.createNotificationChannel(NotificationChannel(
-            CH_ACTIVITY, "Activity", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Streaks, milestones, and achievements"
+            CH_ACTIVITY, "Achievements", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Streaks, milestones, achievements"
         })
         nm.createNotificationChannel(NotificationChannel(
-            CH_TIPS, "Tips & Discovery", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Tips, hidden features, and music discovery"
+            CH_TIPS, "Tips & Tricks", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Hidden features and discovery"
         })
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // SCHEDULE: 10 notifications at random times throughout the day
-    // Called once per day (from DailyNotificationWorker or on app open)
+    // FIRST INSTALL — fire immediately + schedule first 20
+    // ═══════════════════════════════════════════════════════════════════════
+    fun onFirstInstall() {
+        val done = prefs.getBoolean(KEY_FIRST_RUN, false)
+        if (done) return
+        prefs.edit().putBoolean(KEY_FIRST_RUN, true).apply()
+
+        // Fire a welcome notification RIGHT NOW (3 min delay)
+        scheduleAt(System.currentTimeMillis() + 3 * 60_000L, T_MOOD_MORNING, 9999)
+        // Another one in 15 minutes
+        scheduleAt(System.currentTimeMillis() + 15 * 60_000L, T_TIP_GENERAL, 9998)
+        // And one at the 30-minute mark
+        scheduleAt(System.currentTimeMillis() + 30 * 60_000L, T_FAVORITE_HINT, 9997)
+
+        // Force reschedule today
+        prefs.edit().remove(KEY_LAST_SCHEDULE).apply()
+        scheduleDailyNotifications()
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SCHEDULE 20 notifications spread across the day
     // ═══════════════════════════════════════════════════════════════════════
     fun scheduleDailyNotifications() {
         val today = todayKey()
-        if (prefs.getString(KEY_LAST_SCHEDULE, "") == today) return  // already scheduled today
-
+        if (prefs.getString(KEY_LAST_SCHEDULE, "") == today) return
         prefs.edit().putString(KEY_LAST_SCHEDULE, today).apply()
 
-        val notifTypes = pickNotificationTypesForToday()
-        val timeSlots  = generateRandomTimeSlots(notifTypes.size)
-
-        notifTypes.forEachIndexed { i, type ->
-            scheduleAt(timeSlots[i], type, baseRequestCode = i * 100)
+        val types = pickTwentyTypes()
+        val slots = generateSlots(types.size)
+        types.forEachIndexed { i, type ->
+            scheduleAt(slots[i], type, i * 100)
         }
     }
 
-    // ── Pick which 10 notification types fire today ───────────────────────
-    // Uses real user data to decide relevance
-    private fun pickNotificationTypesForToday(): List<Int> {
-        val stats       = store.getPlayStats()
-        val recentIds   = store.getRecentIds()
-        val lastPlayed  = stats.values.maxOfOrNull { it.lastPlayed } ?: 0L
-        val hoursSince  = (System.currentTimeMillis() - lastPlayed) / 3_600_000L
-        val totalPlays  = stats.values.sumOf { it.playCount }
-        val favCount    = store.getFavorites().size
-        val streak      = getCurrentStreak()
+    // ── Pick 20 types weighted by user context ────────────────────────────
+    private fun pickTwentyTypes(): List<Int> {
+        val stats      = store.getPlayStats()
+        val recentIds  = store.getRecentIds()
+        val lastPlayed = stats.values.maxOfOrNull { it.lastPlayed } ?: 0L
+        val hoursAgo   = (System.currentTimeMillis() - lastPlayed) / 3_600_000L
+        val totalPlays = stats.values.sumOf { it.playCount }
+        val favCount   = store.getFavorites().size
+        val streak     = getCurrentStreak()
+        val hour       = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
-        // Pool of all types with weights based on user context
         val pool = mutableListOf<Int>()
 
-        // Always include mood-based (morning/evening) — 2 slots
-        pool += NOTIF_MOOD_MORNING
-        pool += NOTIF_MOOD_EVENING
+        // Time-of-day mood — always include relevant ones
+        if (hour in 5..10)   { repeat(2) { pool += T_MOOD_MORNING } }
+        if (hour in 11..14)  { repeat(2) { pool += T_MOOD_NOON    } }
+        if (hour in 15..19)  { repeat(2) { pool += T_MOOD_EVENING } }
+        if (hour in 20..23)  { repeat(2) { pool += T_MOOD_NIGHT   } }
+        // Always include morning + evening regardless
+        pool += T_MOOD_MORNING
+        pool += T_MOOD_EVENING
 
-        // Comeback if not active recently
-        if (hoursSince >= 3) repeat(2) { pool += NOTIF_COMEBACK }
+        // Comeback — weighted by inactivity
+        when {
+            hoursAgo >= 24  -> repeat(4) { pool += T_COMEBACK_1 }
+            hoursAgo >= 6   -> repeat(3) { pool += T_COMEBACK_2 }
+            hoursAgo >= 2   -> repeat(2) { pool += T_COMEBACK_3 }
+            else            -> pool += T_COMEBACK_1
+        }
 
-        // Streak if active
-        if (streak >= 2) pool += NOTIF_STREAK
+        // Streak
+        if (streak >= 2) repeat(2) { pool += T_STREAK }
 
-        // Stats if enough data
-        if (totalPlays >= 10) pool += NOTIF_WEEKLY_STATS
+        // Stats (real data)
+        if (totalPlays >= 10) pool += T_WEEKLY_STATS
+        if (totalPlays >= 3)  pool += T_TOP_SONG
 
-        // Top song
-        if (recentIds.isNotEmpty()) pool += NOTIF_TOP_SONG
+        // Discovery
+        if (recentIds.size >= 5) pool += T_DISCOVERY
 
-        // Discovery — random song from library
-        if (recentIds.size >= 5) pool += NOTIF_DISCOVERY
+        // Milestone
+        if (isMilestone(totalPlays)) repeat(2) { pool += T_MILESTONE }
 
-        // Milestone check
-        if (isMilestone(totalPlays)) pool += NOTIF_MILESTONE
+        // Onboarding hints (for new users)
+        if (totalPlays < 10) {
+            pool += T_FAVORITE_HINT
+            pool += T_PLAYLIST_HINT
+            pool += T_VIDEO_HINT
+        }
 
-        // Tips — always helpful
-        repeat(2) { pool += NOTIF_TIP }
+        // Favorites
+        if (favCount >= 3) pool += T_QUEUE_HINT
+        else pool += T_FAVORITE_HINT
 
-        // Favorites queue hint
-        if (favCount >= 3) pool += NOTIF_QUEUE_HINT
+        // Tips — always several
+        pool += T_TIP_GESTURE
+        pool += T_TIP_EQ
+        pool += T_TIP_LYRICS
+        pool += T_TIP_SLEEP
+        pool += T_TIP_SEARCH
+        pool += T_TIP_GENERAL
 
-        // New songs added this week
-        pool += NOTIF_NEW_SONGS
+        // New songs
+        pool += T_NEW_SONGS
 
-        // Shuffle and take exactly 10
+        // Social
+        if (totalPlays >= 20) pool += T_INVITE
+
         pool.shuffle()
-        return pool.take(10).ifEmpty {
-            // Fallback: 10 tips if no data available
-            List(10) { NOTIF_TIP }
+        // Ensure variety — deduplicate same type appearing > 3 times
+        val result = mutableListOf<Int>()
+        val counts = mutableMapOf<Int, Int>()
+        for (t in pool) {
+            val c = counts.getOrDefault(t, 0)
+            if (c < 3) { result += t; counts[t] = c + 1 }
+            if (result.size == 20) break
         }
+        // Pad to 20 with tips if needed
+        while (result.size < 20) {
+            result += listOf(T_TIP_GENERAL, T_TIP_GESTURE, T_TIP_EQ, T_MOOD_EVENING,
+                T_COMEBACK_1, T_FAVORITE_HINT, T_TIP_SEARCH).random()
+        }
+        return result.take(20)
     }
 
-    // ── Generate 10 non-overlapping random time slots ─────────────────────
-    // Distributes across the day: morning (7-11), afternoon (12-17), evening (18-22)
-    private fun generateRandomTimeSlots(count: Int): List<Long> {
-        val now   = System.currentTimeMillis()
-        val slots = mutableSetOf<Long>()
+    // ── Generate 20 time slots spread across the waking day ──────────────
+    private fun generateSlots(count: Int): List<Long> {
+        val now  = System.currentTimeMillis()
+        val cal  = Calendar.getInstance()
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
 
-        // Distribute into time windows
+        // Distribute across windows, skipping windows that have fully passed
+        data class Window(val range: IntRange, val slots: Int)
         val windows = listOf(
-            7..11,    // morning — 3 slots
-            12..17,   // afternoon — 4 slots
-            18..22,   // evening — 3 slots
+            Window(6..9,   3),   // early morning
+            Window(10..12, 3),   // late morning
+            Window(13..14, 2),   // early afternoon
+            Window(15..17, 3),   // afternoon
+            Window(18..19, 3),   // early evening
+            Window(20..21, 3),   // evening
+            Window(22..23, 3),   // night
         )
-        val distribution = listOf(3, 4, 3)
 
-        var idx = 0
-        windows.forEachIndexed { wi, window ->
-            repeat(distribution[wi]) {
-                if (idx < count) {
-                    val hour   = window.random()
-                    val minute = (0..59).random()
-                    val cal    = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, hour)
-                        set(Calendar.MINUTE, minute)
-                        set(Calendar.SECOND, Random.nextInt(0, 59))
-                        set(Calendar.MILLISECOND, 0)
-                        // If this time has already passed today, skip to next day
-                        if (timeInMillis <= now) add(Calendar.DAY_OF_YEAR, 1)
-                    }
-                    slots += cal.timeInMillis
-                    idx++
-                }
+        val result = mutableListOf<Long>()
+
+        // First: schedule a few SOON (next 1-4 hours) if none would fire today
+        val soonHour = (hour + 1).coerceAtMost(23)
+        if (hour < 22) {
+            repeat(3) {
+                val h = (hour + 1 + it).coerceAtMost(23)
+                result += timeToday(h, Random.nextInt(5, 55))
             }
         }
 
-        // Fill remaining with random times if needed
-        while (slots.size < count) {
-            val cal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, (7..22).random())
-                set(Calendar.MINUTE, (0..59).random())
-                set(Calendar.SECOND, 0)
-                if (timeInMillis <= now) add(Calendar.DAY_OF_YEAR, 1)
+        // Then spread rest across day
+        for (w in windows) {
+            if (w.range.last < hour) continue  // window fully passed
+            repeat(w.slots) {
+                val h = w.range.random()
+                val m = Random.nextInt(0, 59)
+                val ms = timeToday(h, m)
+                // If this time has passed, push to tomorrow
+                val adjusted = if (ms <= now) ms + 24 * 3_600_000L else ms
+                result += adjusted
             }
-            slots += cal.timeInMillis
         }
 
-        return slots.sorted().take(count)
+        // Deduplicate (within 5 min of each other)
+        val deduped = mutableListOf<Long>()
+        for (t in result.sorted()) {
+            if (deduped.none { abs(it - t) < 5 * 60_000L }) deduped += t
+        }
+
+        return deduped.sorted().take(count)
     }
 
-    private fun scheduleAt(triggerMs: Long, notifType: Int, baseRequestCode: Int) {
+    private fun timeToday(hour: Int, minute: Int): Long =
+        Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, Random.nextInt(0, 59))
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+    private fun abs(x: Long) = if (x < 0) -x else x
+
+    private fun scheduleAt(triggerMs: Long, type: Int, requestCode: Int) {
         val intent = Intent(context, NotificationAlarmReceiver::class.java).apply {
-            action = ACTION_DAILY_NOTIF
-            putExtra(EXTRA_NOTIF_TYPE, notifType)
+            action = ACTION_DAILY
+            putExtra(EXTRA_TYPE, type)
         }
-        val pi = PendingIntent.getBroadcast(
-            context, baseRequestCode + notifType,
-            intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pi = PendingIntent.getBroadcast(context, requestCode + type, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarm.canScheduleExactAlarms()) {
-                // Can't schedule exact — use inexact
                 alarm.set(AlarmManager.RTC_WAKEUP, triggerMs, pi)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)
@@ -236,277 +287,307 @@ class DeckNotificationEngine(private val context: Context) {
                 alarm.setExact(AlarmManager.RTC_WAKEUP, triggerMs, pi)
             }
         } catch (_: Exception) {
-            alarm.set(AlarmManager.RTC_WAKEUP, triggerMs, pi)
+            try { alarm.set(AlarmManager.RTC_WAKEUP, triggerMs, pi) } catch (_: Exception) {}
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // FIRE: Build and show the actual notification with real content
+    // FIRE — build and show notification
     // ═══════════════════════════════════════════════════════════════════════
     fun fireNotification(type: Int) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
-
         when (type) {
-            NOTIF_COMEBACK       -> fireComeback()
-            NOTIF_STREAK         -> fireStreak()
-            NOTIF_TOP_SONG       -> fireTopSong()
-            NOTIF_WEEKLY_STATS   -> fireWeeklyStats()
-            NOTIF_MOOD_MORNING   -> fireMood(morning = true)
-            NOTIF_MOOD_EVENING   -> fireMood(morning = false)
-            NOTIF_DISCOVERY      -> fireDiscovery()
-            NOTIF_MILESTONE      -> fireMilestone()
-            NOTIF_NEW_SONGS      -> fireNewSongs()
-            NOTIF_QUEUE_HINT     -> fireQueueHint()
-            NOTIF_TIP            -> fireTip()
+            T_COMEBACK_1, T_COMEBACK_2, T_COMEBACK_3 -> fireComeback(type)
+            T_STREAK       -> fireStreak()
+            T_TOP_SONG     -> fireTopSong()
+            T_WEEKLY_STATS -> fireWeeklyStats()
+            T_MOOD_MORNING -> fireMood(0)
+            T_MOOD_NOON    -> fireMood(1)
+            T_MOOD_EVENING -> fireMood(2)
+            T_MOOD_NIGHT   -> fireMood(3)
+            T_DISCOVERY    -> fireDiscovery()
+            T_MILESTONE    -> fireMilestone()
+            T_NEW_SONGS    -> fireNewSongs()
+            T_QUEUE_HINT   -> fireQueueHint()
+            T_INVITE       -> fireInvite()
+            T_PLAYLIST_HINT -> firePlaylistHint()
+            T_VIDEO_HINT   -> fireVideoHint()
+            T_FAVORITE_HINT -> fireFavoriteHint()
+            T_TIP_GESTURE  -> fireTip(0)
+            T_TIP_EQ       -> fireTip(1)
+            T_TIP_LYRICS   -> fireTip(2)
+            T_TIP_SLEEP    -> fireTip(3)
+            T_TIP_SEARCH   -> fireTip(4)
+            T_TIP_GENERAL  -> fireTip(5)
+            else           -> fireTip(Random.nextInt(0, 6))
         }
     }
 
-    // ── 1. COMEBACK — fires after inactivity ─────────────────────────────
-    private fun fireComeback() {
-        val stats   = store.getPlayStats()
-        val recentIds = store.getRecentIds()
-        if (recentIds.isEmpty()) return
-
+    // ── Comeback (3 variants) ─────────────────────────────────────────────
+    private fun fireComeback(variant: Int) {
+        val stats = store.getPlayStats()
         val lastPlayed = stats.values.maxOfOrNull { it.lastPlayed } ?: return
-        val hoursAgo   = (System.currentTimeMillis() - lastPlayed) / 3_600_000L
-        if (hoursAgo < 2) return  // too soon — user is active
+        val hoursAgo = (System.currentTimeMillis() - lastPlayed) / 3_600_000L
+        if (hoursAgo < 1) return  // user is active
 
-        val messages = listOf(
-            "Your music is waiting 🎵" to "Pick up where you left off",
-            "Time for a break? 🎧" to "Your playlist is ready when you are",
-            "Missing the beat?" to "Come back and listen to something great",
-            "Your ears deserve it 🎶" to "Deck is ready with your music",
-        )
-        val (title, body) = messages.random()
-
-        post(ID_COMEBACK, CH_ENGAGE, title, body, autoCancel = true)
+        val (title, body) = when (variant) {
+            T_COMEBACK_1 -> listOf(
+                "Your music misses you 🎵" to "It's been ${hoursAgo}h. Time to listen?",
+                "Missing the beat? 🎧" to "Your playlist is waiting. Come back!",
+                "Silence is overrated 🎶" to "Open Deck and pick up where you left off.",
+            ).random()
+            T_COMEBACK_2 -> listOf(
+                "Time for some music? ⏰" to "You haven't listened in a while. Let's go.",
+                "Your daily soundtrack awaits 🎵" to "What are we listening to today?",
+                "A little music goes a long way 🎸" to "Open Deck for an instant mood boost.",
+            ).random()
+            else -> listOf(
+                "Still there? 👀" to "Your music library is ready whenever you are.",
+                "Great music is waiting 🎧" to "Tap to open Deck and start listening.",
+                "Deck misses you 🎶" to "Come back and listen to something great.",
+            ).random()
+        }
+        post(ID_BASE + variant, CH_ENGAGE, title, body)
     }
 
-    // ── 2. STREAK — consecutive days listening ───────────────────────────
+    // ── Streak ───────────────────────────────────────────────────────────
     private fun fireStreak() {
         val streak = getCurrentStreak()
         if (streak < 2) return
-
         val (title, body) = when {
-            streak >= 30 -> "🔥 ${streak}-day streak!" to "You're on fire! Unreal dedication."
-            streak >= 14 -> "🎯 ${streak} days straight!" to "Two weeks of great music. Keep it up!"
-            streak >= 7  -> "⚡ ${streak}-day streak!" to "A full week of listening. Legend."
-            streak >= 3  -> "🎵 ${streak} days in a row!" to "The streak continues. Don't break it!"
-            else         -> "Day $streak 🎶" to "You listened yesterday and today. Keep going!"
+            streak >= 30 -> "🔥 ${streak}-day streak!" to "Unstoppable. You are a true music lover."
+            streak >= 14 -> "⚡ ${streak} days straight!" to "Two weeks! Your dedication is inspiring."
+            streak >= 7  -> "🎯 ${streak}-day streak!" to "A full week of great music. Keep going!"
+            streak >= 3  -> "🎵 ${streak} days in a row!" to "Building momentum. Don't break it!"
+            else         -> "🎶 Day $streak" to "You're on a roll. Keep the streak alive!"
         }
-        post(ID_STREAK, CH_ACTIVITY, title, body, autoCancel = true)
+        post(ID_BASE + 10, CH_ACTIVITY, title, body)
     }
 
-    // ── 3. TOP SONG — your most played ──────────────────────────────────
+    // ── Top Song ─────────────────────────────────────────────────────────
     private fun fireTopSong() {
-        val stats   = store.getPlayStats()
-        val top     = stats.maxByOrNull { it.value.playCount } ?: return
-        val plays   = top.value.playCount
-        if (plays < 3) return
-
-        val title = "Your top track this week 🎵"
-        val body  = "You've played it $plays times. What a hit."
-        post(ID_TOP_SONG, CH_ENGAGE, title, body, autoCancel = true)
+        val top = store.getPlayStats().maxByOrNull { it.value.playCount } ?: return
+        if (top.value.playCount < 3) return
+        val messages = listOf(
+            "Your most played track 🎵" to "You've played it ${top.value.playCount} times. A real favourite.",
+            "On repeat mode 🔁" to "${top.value.playCount} plays and counting. You love this one.",
+            "Your anthem this week 🏆" to "Played ${top.value.playCount} times. Tap to play it now.",
+        )
+        val (title, body) = messages.random()
+        post(ID_BASE + 11, CH_ENGAGE, title, body)
     }
 
-    // ── 4. WEEKLY STATS ──────────────────────────────────────────────────
+    // ── Weekly Stats ─────────────────────────────────────────────────────
     private fun fireWeeklyStats() {
-        val totalMs  = store.getTotalPlaytimeMs()
-        val hours    = totalMs / 3_600_000L
-        val minutes  = (totalMs % 3_600_000L) / 60_000L
-        if (hours == 0L && minutes < 5L) return
-
-        val timeStr  = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
-        val title    = "Your Deck stats 📊"
-        val body     = "You've listened for $timeStr total. Tap to see your full history."
-        post(ID_WEEKLY, CH_ENGAGE, title, body, screen = "stats", autoCancel = true)
+        val totalMs = store.getTotalPlaytimeMs()
+        val hours   = totalMs / 3_600_000L
+        val mins    = (totalMs % 3_600_000L) / 60_000L
+        if (hours == 0L && mins < 5L) return
+        val timeStr = if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+        val messages = listOf(
+            "Your Deck stats 📊" to "You've listened for $timeStr total. Impressive!",
+            "Listening summary 🎧" to "$timeStr of music. That's dedication!",
+            "Your music journey 🎵" to "$timeStr listened. Check your full history in the app.",
+        )
+        val (title, body) = messages.random()
+        post(ID_BASE + 12, CH_ENGAGE, title, body, screen = "stats")
     }
 
-    // ── 5. MOOD — time-of-day based ──────────────────────────────────────
-    private fun fireMood(morning: Boolean) {
-        val (title, body) = if (morning) {
-            val greetings = listOf(
-                "Good morning! 🌅" to "Start the day right with your music",
-                "Rise and shine 🎵" to "Your morning playlist is ready",
-                "Morning vibes 🌤" to "Set the tone for today with Deck",
-                "New day, great music ☀️" to "What are we listening to today?",
-            )
-            greetings.random()
-        } else {
-            val evenings = listOf(
-                "Wind down time 🌙" to "Relax with your favorite tracks",
-                "Evening session 🎧" to "The perfect time to lose yourself in music",
-                "End the day right 🌆" to "Your playlist is waiting",
-                "Night vibes 🌃" to "Great music for a great evening",
-            )
-            evenings.random()
+    // ── Mood (4 time slots) ───────────────────────────────────────────────
+    private fun fireMood(slot: Int) {
+        val (title, body) = when (slot) {
+            0 -> listOf(  // morning
+                "Good morning! 🌅" to "Start the day right with your music.",
+                "Rise and vibe ☀️" to "Your morning playlist is ready in Deck.",
+                "Morning energy 🎶" to "The best mornings start with great music.",
+            ).random()
+            1 -> listOf(  // noon
+                "Lunchtime playlist? 🍽️" to "Take a break and listen to something good.",
+                "Afternoon pick-me-up 🎵" to "Music is the best midday reset.",
+                "Midday vibes 🎧" to "Your music is ready for the afternoon.",
+            ).random()
+            2 -> listOf(  // evening
+                "Wind down time 🌆" to "Relax with your favourite tracks in Deck.",
+                "Evening session 🌇" to "The perfect time to lose yourself in music.",
+                "End the day right 🎵" to "Great music for a great evening.",
+            ).random()
+            else -> listOf(  // night
+                "Late night listening 🌙" to "Best music hits different at night.",
+                "Night owl playlist 🦉" to "The city sleeps. Your music doesn't.",
+                "Midnight vibes 🌃" to "Perfect time for your favourite tracks.",
+            ).random()
         }
-        val id = if (morning) ID_MOOD else ID_MOOD + 1
-        post(id, CH_ENGAGE, title, body, autoCancel = true)
+        post(ID_BASE + 13 + slot, CH_ENGAGE, title, body)
     }
 
-    // ── 6. DISCOVERY — song you haven't heard in a while ─────────────────
+    // ── Discovery ─────────────────────────────────────────────────────────
     private fun fireDiscovery() {
         val stats    = store.getPlayStats()
-        val recentIds = store.getRecentIds().take(5).toSet()
-
-        // Find a song played before but not recently
+        val recent   = store.getRecentIds().take(5).toSet()
         val forgotten = stats.entries
-            .filter { it.key !in recentIds && it.value.playCount >= 2 }
+            .filter { it.key !in recent && it.value.playCount >= 2 }
             .sortedBy { it.value.lastPlayed }
             .firstOrNull() ?: return
-
-        val daysAgo = (System.currentTimeMillis() - forgotten.value.lastPlayed) /
-                        (24L * 3_600_000L)
+        val daysAgo = (System.currentTimeMillis() - forgotten.value.lastPlayed) / 86_400_000L
         if (daysAgo < 7) return
-
-        val title = "Remember this? 🎵"
-        val body  = "You haven't played one of your songs in $daysAgo days. Time to revisit."
-        post(ID_DISCOVERY, CH_TIPS, title, body, autoCancel = true)
+        val messages = listOf(
+            "Remember this one? 🎵" to "Haven't heard it in $daysAgo days. Time to revisit.",
+            "Old favourite rediscovered 🎶" to "A song you loved is waiting to be played again.",
+            "Blast from the past 🎧" to "One of your songs hasn't been played in $daysAgo days.",
+        )
+        val (title, body) = messages.random()
+        post(ID_BASE + 17, CH_TIPS, title, body)
     }
 
-    // ── 7. MILESTONE — play count achievements ───────────────────────────
+    // ── Milestone ────────────────────────────────────────────────────────
     private fun fireMilestone() {
-        val totalPlays = store.getPlayStats().values.sumOf { it.playCount }
-        val milestone  = getMilestone(totalPlays) ?: return
-        val prev       = prefs.getInt("last_milestone", 0)
-        if (milestone <= prev) return
-        prefs.edit().putInt("last_milestone", milestone).apply()
-
+        val total = store.getPlayStats().values.sumOf { it.playCount }
+        val ms    = getMilestone(total) ?: return
+        val prev  = prefs.getInt(KEY_LAST_MILESTONE, 0)
+        if (ms <= prev) return
+        prefs.edit().putInt(KEY_LAST_MILESTONE, ms).apply()
         val (title, body) = when {
-            milestone >= 1000 -> "🏆 1,000 songs played!" to "You are a true music lover. Legendary."
-            milestone >= 500  -> "🌟 500 songs played!" to "Half a thousand plays. You're dedicated."
-            milestone >= 100  -> "⭐ 100 songs played!" to "You're building a real listening history!"
-            milestone >= 50   -> "🎯 50 songs played!" to "You're finding your groove with Deck."
-            else               -> "🎵 $milestone songs played!" to "Your music journey is growing!"
+            ms >= 1000 -> "🏆 1,000 songs played!" to "Legendary listener. You are the real deal."
+            ms >= 500  -> "🌟 500 plays!" to "Half a thousand songs. Incredible dedication."
+            ms >= 100  -> "⭐ 100 songs played!" to "You're building a serious listening history!"
+            ms >= 50   -> "🎯 50 plays!" to "50 songs in! You're finding your groove with Deck."
+            ms >= 25   -> "🎵 25 plays!" to "Getting started. Your music story is just beginning."
+            else       -> "🎶 $ms plays!" to "Every song counts. Keep listening!"
         }
-        post(ID_MILESTONE, CH_ACTIVITY, title, body, autoCancel = true)
+        post(ID_BASE + 18, CH_ACTIVITY, title, body)
     }
 
-    // ── 8. NEW SONGS — songs added this week ─────────────────────────────
+    // ── New Songs ────────────────────────────────────────────────────────
     private fun fireNewSongs() {
-        val weekAgo     = System.currentTimeMillis() - 7L * 24 * 3_600_000
-        val recentCount = store.prefs.getInt("recently_added_count", 0)
-        if (recentCount < 2) return
-
-        val title = "New music this week 🎵"
-        val body  = "$recentCount new songs are in your library. Ready to explore?"
-        post(ID_NEW_SONGS, CH_ENGAGE, title, body, autoCancel = true)
+        val count = prefs.getInt("recently_added_count", 0)
+        if (count < 2) {
+            // Fire a generic library tip instead
+            post(ID_BASE + 19, CH_ENGAGE,
+                "Your music library 📚",
+                "Tap Refresh in the app to scan for new music files on your device.")
+            return
+        }
+        val messages = listOf(
+            "New music this week 🎵" to "$count new songs added to your library. Ready to explore?",
+            "Fresh additions 🎶" to "$count songs are new in your library. Tap to discover them.",
+            "Library update 📚" to "You have $count new tracks. Check them out in Recently Added.",
+        )
+        val (title, body) = messages.random()
+        post(ID_BASE + 19, CH_ENGAGE, title, body)
     }
 
-    // ── 9. QUEUE HINT — favorites playlist ───────────────────────────────
+    // ── Queue Hint ───────────────────────────────────────────────────────
     private fun fireQueueHint() {
         val favCount = store.getFavorites().size
-        if (favCount < 3) return
-
-        val hints = listOf(
-            "Your favorites are calling 💜" to "You have $favCount favorited songs waiting.",
-            "Queue up your best $favCount ❤️" to "Your favorites playlist is stacked.",
-            "Shuffle your favorites 🎲" to "$favCount great songs. Tap to start.",
+        if (favCount < 3) { fireFavoriteHint(); return }
+        val messages = listOf(
+            "Your favourites are ready 💜" to "You have $favCount favourite songs. Play them all now.",
+            "Shuffle your best $favCount ❤️" to "Tap Favourites in the app for your personal playlist.",
+            "Queue up your top picks 🎵" to "$favCount great songs waiting in your Favourites.",
         )
-        val (title, body) = hints.random()
-        post(ID_QUEUE_HINT, CH_ENGAGE, title, body, screen = "music", autoCancel = true)
+        val (title, body) = messages.random()
+        post(ID_BASE + 20, CH_ENGAGE, title, body, screen = "music")
     }
 
-    // ── 10. TIPS — feature discovery ─────────────────────────────────────
-    private fun fireTip() {
+    // ── Onboarding / Discovery hints ─────────────────────────────────────
+    private fun fireFavoriteHint() {
+        post(ID_BASE + 21, CH_TIPS,
+            "Heart your favourites ❤️",
+            "Tap the heart on any song to add it to Favourites for quick access.")
+    }
+
+    private fun firePlaylistHint() {
+        post(ID_BASE + 22, CH_TIPS,
+            "Create a playlist 📋",
+            "Long-press any song and tap 'Add to Playlist' to start building your collection.")
+    }
+
+    private fun fireVideoHint() {
+        post(ID_BASE + 23, CH_TIPS,
+            "Deck plays videos too 🎬",
+            "Open the Videos tab to play all your local video files with advanced controls.")
+    }
+
+    private fun fireInvite() {
+        post(ID_BASE + 24, CH_ENGAGE,
+            "Share Deck with friends 🤝",
+            "Know someone who loves music? Tell them about Deck — it's free!")
+    }
+
+    // ── Tips (6 variants) ────────────────────────────────────────────────
+    private fun fireTip(variant: Int) {
         val tips = listOf(
-            "💡 Did you know?" to "Swipe left/right on album art to skip tracks",
-            "🎚 Pro tip" to "Long-press any song to set a custom EQ profile for it",
-            "⏱ Sleep timer" to "Use the sleep timer in Now Playing to fall asleep to music",
-            "🎤 Lyrics" to "Add a .lrc file next to your music for synced lyrics",
-            "📁 Folders" to "The Videos tab shows your files organized by folder",
-            "🔁 Crossfade" to "Enable crossfade in Settings for smooth transitions",
-            "📊 Stats" to "Check your listening history in the More tab",
-            "❤️ Favorites" to "Tap the heart on any song to add it to Favorites",
-            "🔍 Search" to "Tap the search icon on any tab to find songs instantly",
-            "⚡ Speed" to "Change playback speed from Now Playing for podcasts & audiobooks",
-            "📱 Lock screen" to "Control playback from your lock screen — swipe down to see controls",
+            "💡 Gesture tip" to "Swipe left/right on the album art in Now Playing to skip tracks.",
+            "🎚️ Equalizer" to "Long-press a song and tap EQ to set a custom equalizer profile just for it.",
+            "🎤 Synced lyrics" to "Add a .lrc file with the same name as your song for real-time lyrics.",
+            "⏱️ Sleep timer" to "Tap the moon icon in Now Playing to set a sleep timer. Falls asleep to music!",
+            "🔍 Quick search" to "Tap the search icon on any tab to instantly find songs, videos, and artists.",
+            "⚡ Speed control" to "Long-press any video to play at 2× speed. Or tap the speed button for options.",
         )
-        val (title, body) = tips[Random.nextInt(tips.size)]
-        post(ID_TIP, CH_TIPS, title, body, autoCancel = true)
+        val (title, body) = tips[variant.coerceIn(0, tips.size - 1)]
+        post(ID_BASE + 30 + variant, CH_TIPS, title, body)
     }
 
-    // ── Streak calculation ────────────────────────────────────────────────
-    fun getCurrentStreak(): Int {
-        val stats      = store.getPlayStats()
-        if (stats.isEmpty()) return 0
-        val lastPlayed = stats.values.maxOfOrNull { it.lastPlayed } ?: return 0
-        val today      = todayKey()
-        val lastDay    = msToDateKey(lastPlayed)
-        val streakLastDay = prefs.getString(KEY_STREAK_LAST_DAY, "") ?: ""
-        var streak     = prefs.getInt(KEY_STREAK, 0)
-
-        return when {
-            lastDay == today -> {
-                // Played today — update streak if this is a new day
-                if (streakLastDay != today) {
-                    val yesterday = yesterdayKey()
-                    streak = if (streakLastDay == yesterday) streak + 1 else 1
-                    prefs.edit()
-                        .putInt(KEY_STREAK, streak)
-                        .putString(KEY_STREAK_LAST_DAY, today)
-                        .apply()
-                }
-                streak
-            }
-            lastDay == yesterdayKey() -> streak  // played yesterday — streak intact
-            else -> 0  // gap — streak broken
-        }
-    }
-
-    // ── Post a notification ───────────────────────────────────────────────
-    private fun post(
-        id: Int, channel: String, title: String, body: String,
-        screen: String? = null, autoCancel: Boolean = true, art: Bitmap? = null,
-    ) {
+    // ── Post notification ─────────────────────────────────────────────────
+    private fun post(id: Int, channel: String, title: String, body: String, screen: String? = null) {
         try {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 screen?.let { putExtra("open_screen", it) }
             }
-            val pi = PendingIntent.getActivity(context, id,
-                intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val pi = PendingIntent.getActivity(context, id, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-            val builder = NotificationCompat.Builder(context, channel)
+            val n = NotificationCompat.Builder(context, channel)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setContentIntent(pi)
-                .setAutoCancel(autoCancel)
-                .setPriority(
-                    if (channel == CH_ACTIVITY) NotificationCompat.PRIORITY_HIGH
-                    else NotificationCompat.PRIORITY_DEFAULT
-                )
-
-            if (art != null) builder.setLargeIcon(art)
-            NotificationManagerCompat.from(context).notify(id, builder.build())
+                .setAutoCancel(true)
+                .setPriority(if (channel == CH_ACTIVITY) NotificationCompat.PRIORITY_HIGH
+                             else NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+            NotificationManagerCompat.from(context).notify(id, n)
         } catch (_: Exception) {}
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
-    private fun todayKey()     = msToDateKey(System.currentTimeMillis())
-    private fun yesterdayKey() = msToDateKey(System.currentTimeMillis() - 24 * 3_600_000L)
-
-    private fun msToDateKey(ms: Long): String {
-        val cal = Calendar.getInstance().apply { timeInMillis = ms }
-        return "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.DAY_OF_YEAR)}"
+    // ── Streak calculation ────────────────────────────────────────────────
+    fun getCurrentStreak(): Int {
+        val stats = store.getPlayStats()
+        if (stats.isEmpty()) return 0
+        val lastPlayed = stats.values.maxOfOrNull { it.lastPlayed } ?: return 0
+        val today      = todayKey()
+        val lastDay    = msToDay(lastPlayed)
+        val prevDay    = prefs.getString(KEY_STREAK_DAY, "") ?: ""
+        var streak     = prefs.getInt(KEY_STREAK, 0)
+        return when {
+            lastDay == today -> {
+                if (prevDay != today) {
+                    val yesterday = msToDay(System.currentTimeMillis() - 86_400_000L)
+                    streak = if (prevDay == yesterday) streak + 1 else 1
+                    prefs.edit().putInt(KEY_STREAK, streak).putString(KEY_STREAK_DAY, today).apply()
+                }
+                streak
+            }
+            lastDay == msToDay(System.currentTimeMillis() - 86_400_000L) -> streak
+            else -> 0
+        }
     }
 
-    private fun isMilestone(plays: Int) = plays in listOf(10, 25, 50, 100, 250, 500, 1000)
-    private fun getMilestone(plays: Int) = listOf(10, 25, 50, 100, 250, 500, 1000)
-        .lastOrNull { plays >= it }
-
-
+    private fun todayKey() = msToDay(System.currentTimeMillis())
+    private fun msToDay(ms: Long): String {
+        val c = Calendar.getInstance().apply { timeInMillis = ms }
+        return "${c.get(Calendar.YEAR)}-${c.get(Calendar.DAY_OF_YEAR)}"
+    }
+    private fun isMilestone(p: Int) = p in listOf(5, 10, 25, 50, 100, 250, 500, 1000)
+    private fun getMilestone(p: Int) = listOf(5, 10, 25, 50, 100, 250, 500, 1000).lastOrNull { p >= it }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ALARM RECEIVER — wakes up at the scheduled times and fires the notification
-// ═══════════════════════════════════════════════════════════════════════════
+// ── Alarm Receiver ────────────────────────────────────────────────────────
 class NotificationAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val type = intent.getIntExtra(DeckNotificationEngine.EXTRA_NOTIF_TYPE, -1)
+        val type = intent.getIntExtra(DeckNotificationEngine.EXTRA_TYPE, -1)
         if (type == -1) return
         DeckNotificationEngine(context).fireNotification(type)
     }

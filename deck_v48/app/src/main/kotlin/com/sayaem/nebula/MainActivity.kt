@@ -25,7 +25,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
@@ -66,11 +65,8 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent { DeckRoot(vm, backendVm, onGoogleSignIn = { googleSignInLauncher.launch(backendVm.getGoogleSignInIntent(this)) }) }
         requestPermissions()
-        // On first install: fire 3 immediate notifications (3min, 15min, 30min after install)
-        // then schedule 20 daily notifications
-        val engine = com.sayaem.nebula.notifications.DeckNotificationEngine(this)
-        engine.onFirstInstall()          // only runs once ever
-        engine.scheduleDailyNotifications()  // skips if already done today
+        // Schedule today's 10 engagement notifications
+        com.sayaem.nebula.notifications.DeckNotificationEngine(this).scheduleDailyNotifications()
     }
 
     private fun requestPermissions() {
@@ -234,16 +230,13 @@ fun DeckRoot(
                                     videoQueue = videos
                                     videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
                                 },
-                                onMoreVideo  = { optionsVideo = it },
-                                onMoreSong   = { optionsSong = it },
+                                onMoreSong    = { optionsSong = it },
                                 onMoreVideo   = { optionsVideo = it },
                                 onResumeClick = { showNowPlaying = true },
                                 onSearchClick = { showSearch = true },
-                                onRefresh            = { vm.scanMedia() },
-                                isPremium            = isPremium,
-                                isScanning           = isScanning,
-                                onDeleteHistoryItem  = { vm.removeFromHistory(it.id) },
-                                onClearHistory       = { vm.clearHistory() },
+                                onRefresh     = { vm.scanMedia() },
+                                isPremium     = isPremium,
+                                isScanning    = isScanning,
                             )
                             Screen.Videos -> VideosScreen(
                                 videos        = videos,
@@ -577,18 +570,11 @@ fun SearchOverlay(
                         value = query, onValueChange = { query = it },
                         modifier = Modifier.weight(1f).focusRequester(focusRequester),
                         singleLine = true,
-                        cursorBrush = SolidColor(NebulaViolet),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = appColors.textPrimary),
                         decorationBox = { inner ->
-                            // Box prevents placeholder from covering the cursor/text
-                            Box {
-                                if (query.isEmpty()) {
-                                    Text("Search songs, videos, artists…",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = appColors.textTertiary)
-                                }
-                                inner()
-                            }
+                            if (query.isEmpty()) Text("Search songs, videos, artists…",
+                                style = MaterialTheme.typography.bodyMedium, color = appColors.textTertiary)
+                            inner()
                         }
                     )
                     if (query.isNotEmpty()) {

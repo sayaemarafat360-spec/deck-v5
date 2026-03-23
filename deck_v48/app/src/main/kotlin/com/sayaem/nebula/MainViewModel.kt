@@ -78,11 +78,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _audioSessionId   = MutableStateFlow(0)
     val audioSessionId = _audioSessionId.asStateFlow()
 
-    // History: all media (songs + videos) in playback order
-    val recentSongs: StateFlow<List<Song>> = combine(songs, videos, _playStats) { allSongs, allVideos, _ ->
+    val recentSongs: StateFlow<List<Song>> = combine(songs, _playStats) { allSongs, _ ->
         val ids = store.getRecentIds()
-        val allMedia = (allSongs + allVideos).associateBy { it.id }
-        ids.mapNotNull { allMedia[it] }  // no take() limit — show full history
+        val map = allSongs.associateBy { it.id }
+        ids.mapNotNull { map[it] }.take(20)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val favoriteSongs: StateFlow<List<Song>> = combine(songs, _favorites) { all, favIds ->
@@ -281,23 +280,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Sync to cloud silently
         viewModelScope.launch { DeckBackend.pushFavorites(_favorites.value) }
     }
-    fun clearHistory() {
-        store.clearHistory()
-        _playStats.value = store.getPlayStats()  // triggers recentSongs recompute
-    }
-
     fun isFavorite(id: Long) = id in _favorites.value
     fun reloadFavorites() { _favorites.value = store.getFavorites() }
-
-    // ── History ────────────────────────────────────────────────────────
-    fun removeFromHistory(songId: Long) {
-        store.removeFromHistory(songId)
-        _playStats.value = store.getPlayStats()   // refresh recentSongs StateFlow
-    }
-    fun clearAllHistory() {
-        store.clearAllHistory()
-        _playStats.value = store.getPlayStats()
-    }
 
     // ── Playlists ─────────────────────────────────────────────────────
     fun refreshPlaylists()   { _playlists.value = store.getPlaylists() }

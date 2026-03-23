@@ -1,18 +1,11 @@
 package com.sayaem.nebula.ui.screens
 
 import androidx.compose.ui.*
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -51,17 +44,6 @@ fun SleepTimerSheet(
     val presets = listOf(5, 10, 15, 20, 30, 45, 60, 90)
     var customText by remember { mutableStateOf("") }
     var selectedPreset by remember { mutableStateOf(-1) }
-    val sleepFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    val sleepKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-
-    // Auto-focus the custom input when sheet opens (not in active-timer state)
-    if (!state.isActive) {
-        LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(250)
-            try { sleepFocusRequester.requestFocus() } catch (_: Exception) {}
-            sleepKeyboard?.show()
-        }
-    }
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)).clickable(onClick = onDismiss)) {
         Column(
@@ -134,7 +116,7 @@ fun SleepTimerSheet(
                     OutlinedTextField(
                         value = customText,
                         onValueChange = { if (it.length <= 3 && it.all { c -> c.isDigit() }) { customText = it; selectedPreset = -1 } },
-                        modifier = Modifier.weight(1f).focusRequester(sleepFocusRequester),
+                        modifier = Modifier.weight(1f),
                         placeholder = { Text("e.g. 45", color = LocalAppColors.current.textTertiary) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,

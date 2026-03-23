@@ -126,28 +126,12 @@ class LocalDataStore(context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
-    fun clearHistory() {
-        prefs.edit().putString(KEY_RECENT, "[]").apply()
-    }
-
     fun recordRecentPlay(songId: Long) {
         val list = getRecentIds().filter { it != songId }.toMutableList()
         list.add(0, songId)
-        val trimmed = list.take(100)   // keep more history
+        val trimmed = list.take(50)
         val arr = JSONArray().also { trimmed.forEach(it::put) }
         prefs.edit().putString(KEY_RECENT, arr.toString()).apply()
-    }
-
-    // Delete a single entry from history
-    fun removeFromHistory(songId: Long) {
-        val list = getRecentIds().filter { it != songId }
-        val arr = JSONArray().also { list.forEach(it::put) }
-        prefs.edit().putString(KEY_RECENT, arr.toString()).apply()
-    }
-
-    // Clear all history
-    fun clearAllHistory() {
-        prefs.edit().putString(KEY_RECENT, "[]").apply()
     }
 
     // ─── Playlists ────────────────────────────────────────────────────

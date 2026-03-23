@@ -9,7 +9,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -47,10 +46,8 @@ fun HomeScreen(
     onResumeClick: () -> Unit,
     onSearchClick: () -> Unit,
     onRefresh: () -> Unit,
-    onClearHistory: () -> Unit = {},
     isPremium: Boolean,
     isScanning: Boolean = false,
-    onDeleteHistoryItem: (Song) -> Unit = {},
 ) {
     val appColors = LocalAppColors.current
     val hour      = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
@@ -165,33 +162,14 @@ fun HomeScreen(
                 // ── Recently Played ────────────────────────────────────
                 if (recentSongs.isNotEmpty()) {
                     item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HomeSectionHeader("History", Icons.Filled.History, NebulaViolet)
-                            TextButton(onClick = onClearHistory) {
-                                Text("Clear all", style = MaterialTheme.typography.labelSmall,
-                                    color = appColors.textTertiary)
-                            }
-                        }
+                        HomeSectionHeader("Recently Played", Icons.Filled.History, NebulaViolet)
                     }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            items(recentSongs, key = { "hist_${it.id}" }) { song ->
-                                HistoryCard(
-                                    song     = song,
-                                    onClick  = { if (song.isVideo) onVideoClick(song) else onSongClick(song) },
-                                    onDelete = { onDeleteHistoryItem(song) }
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
+                    items(recentSongs.take(10), key = { "recent_${it.id}" }) { song ->
+                        HomeRecentSongRow(song, { onSongClick(song) }, { onMoreSong(song) })
+                        HorizontalDivider(Modifier.padding(start = 82.dp),
+                            color = appColors.borderSubtle, thickness = 0.5.dp)
                     }
+                    item { Spacer(Modifier.height(4.dp)) }
                 }
 
                 // ── Recent Videos strip ────────────────────────────────
@@ -200,7 +178,7 @@ fun HomeScreen(
                         HomeSectionHeader("Recent Videos", Icons.Filled.VideoLibrary, NebulaRed)
                     }
                     // Vertical video feed — consistent with music rows above
-                    items(videos, key = { "vid_${it.id}" }) { video ->
+                    items(videos.take(6), key = { "vid_${it.id}" }) { video ->
                         Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                             com.sayaem.nebula.ui.screens.VideoFeedCard(
                                 video        = video,
@@ -428,85 +406,5 @@ private fun HomeRecentSongRow(song: Song, onClick: () -> Unit, onMoreClick: () -
             Icon(Icons.Filled.MoreVert, null, tint = appColors.textTertiary,
                 modifier = Modifier.size(16.dp))
         }
-    }
-}
-
-
-// ── Horizontal history card with delete button ────────────────────────────
-@Composable
-
-
-
-// ── History card — compact horizontal card for both songs and videos ──────
-@Composable
-private fun HistoryCard(song: Song, onClick: () -> Unit) {
-    val appColors = LocalAppColors.current
-    Column(
-        Modifier.width(90.dp).clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        // Thumbnail / art box
-        Box(
-            Modifier.size(90.dp).clip(RoundedCornerShape(10.dp))
-                .background(appColors.card)
-        ) {
-            if (song.isVideo) {
-                // Video thumbnail
-                if (song.albumArtUri != null) {
-                    coil.compose.AsyncImage(
-                        model = coil.request.ImageRequest.Builder(LocalContext.current)
-                            .data(song.albumArtUri).crossfade(true).build(),
-                        contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(Modifier.fillMaxSize().background(Color(0xFF1A1A2E)),
-                        contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.VideoFile, null, tint = NebulaRed,
-                            modifier = Modifier.size(28.dp))
-                    }
-                }
-                // Video badge
-                Box(Modifier.align(Alignment.TopStart).padding(4.dp)) {
-                    Box(Modifier.clip(RoundedCornerShape(4.dp))
-                        .background(Color.Black.copy(0.7f))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Color.White,
-                            modifier = Modifier.size(10.dp))
-                    }
-                }
-                // Duration badge
-                Box(Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
-                    Box(Modifier.clip(RoundedCornerShape(3.dp))
-                        .background(Color.Black.copy(0.7f))
-                        .padding(horizontal = 3.dp, vertical = 1.dp)) {
-                        Text(song.durationFormatted,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White)
-                    }
-                }
-            } else {
-                // Music art box
-                MusicArtBox(song = song, size = 90.dp)
-            }
-        }
-        // Title
-        Text(song.title,
-            style = MaterialTheme.typography.labelSmall,
-            color = appColors.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.Medium)
-        // Artist or folder
-        Text(
-            if (song.isVideo) song.filePath.substringBeforeLast("/").substringAfterLast("/")
-            else song.artist,
-            style = MaterialTheme.typography.labelSmall,
-            color = appColors.textTertiary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }

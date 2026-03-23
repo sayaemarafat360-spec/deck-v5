@@ -148,25 +148,21 @@ fun VideosScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (groupByFolder && folderGroups.isNotEmpty()) {
-                    // Playit-style: ONLY show folder cards, NO inline videos
-                    // Each card shows folder thumbnail from first video, name, count
-                    // Tap → drill into folder (FolderContentScreen handles videos)
-                    item(key = "folder_grid_header") { Spacer(Modifier.height(4.dp)) }
-                    items(
-                        items = folderGroups.entries.toList(),
-                        key   = { "folder_${it.key}" }
-                    ) { (folderName, folderVideos) ->
-                        PlayitFolderCard(
-                            name    = folderName,
-                            videos  = folderVideos,
-                            onClick = { onFolderClick?.invoke(folderName, folderVideos) }
-                        )
-                        Spacer(Modifier.height(8.dp))
+                    folderGroups.forEach { (folder, folderVideos) ->
+                        item(key = "header_$folder") {
+                            FolderHeaderChip(
+                                name    = folder,
+                                count   = folderVideos.size,
+                                onClick = { onFolderClick?.invoke(folder, folderVideos) }
+                            )
+                        }
+                        items(folderVideos, key = { "v_${it.id}" }) { video ->
+                            VideoFeedCard(video, { onVideoClick(video) }, { onMoreClick(video) })
+                        }
                     }
                 } else {
                     items(sorted, key = { it.id }) { video ->
                         VideoFeedCard(video, { onVideoClick(video) }, { onMoreClick(video) })
-                        Spacer(Modifier.height(8.dp))
                     }
                 }
             }
@@ -179,102 +175,27 @@ fun VideosScreen(
     }
 }
 
-// ── Playit-style folder card ──────────────────────────────────────────────
-// Full-width card with thumbnail grid on left, folder info on right
+// ── Folder group header chip ──────────────────────────────────────────────
 @Composable
-private fun PlayitFolderCard(name: String, videos: List<Song>, onClick: () -> Unit) {
+private fun FolderHeaderChip(name: String, count: Int, onClick: () -> Unit = {}) {
     val appColors = LocalAppColors.current
     Row(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(appColors.card)
-            .border(0.5.dp, appColors.border, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(NebulaViolet.copy(0.07f))
             .clickable(onClick = onClick)
-            .height(80.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Thumbnail grid (2x2) from first 4 videos, Playit style
-        Box(
-            Modifier.size(80.dp)
-                .clip(RoundedCornerShape(topStart = 13.dp, bottomStart = 13.dp))
-        ) {
-            when {
-                videos.size >= 4 -> {
-                    // 2x2 grid
-                    Column {
-                        Row(Modifier.weight(1f)) {
-                            Box(Modifier.weight(1f).fillMaxHeight()) {
-                                VideoThumbnail(videos[0].filePath, Modifier.fillMaxSize())
-                            }
-                            Box(Modifier.weight(1f).fillMaxHeight()) {
-                                VideoThumbnail(videos[1].filePath, Modifier.fillMaxSize())
-                            }
-                        }
-                        Row(Modifier.weight(1f)) {
-                            Box(Modifier.weight(1f).fillMaxHeight()) {
-                                VideoThumbnail(videos[2].filePath, Modifier.fillMaxSize())
-                            }
-                            Box(Modifier.weight(1f).fillMaxHeight()) {
-                                VideoThumbnail(videos[3].filePath, Modifier.fillMaxSize())
-                            }
-                        }
-                    }
-                }
-                videos.size == 2 || videos.size == 3 -> {
-                    Row {
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            VideoThumbnail(videos[0].filePath, Modifier.fillMaxSize())
-                        }
-                        Column(Modifier.weight(1f).fillMaxHeight()) {
-                            videos.drop(1).take(2).forEach { v ->
-                                Box(Modifier.weight(1f).fillMaxWidth()) {
-                                    VideoThumbnail(v.filePath, Modifier.fillMaxSize())
-                                }
-                            }
-                        }
-                    }
-                }
-                else -> VideoThumbnail(videos.first().filePath, Modifier.fillMaxSize())
-            }
-            // Dark overlay
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(0.18f)))
-        }
-
-        // Folder info
-        Column(
-            Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Filled.Folder, null, tint = NebulaAmber,
-                    modifier = Modifier.size(14.dp))
-                Text(name, style = MaterialTheme.typography.bodyMedium,
-                    color = appColors.textPrimary, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "${videos.size} video${if (videos.size != 1) "s" else ""}",
-                style = MaterialTheme.typography.labelSmall,
-                color = appColors.textTertiary
-            )
-            // Total duration
-            val totalDur = videos.sumOf { it.duration }
-            if (totalDur > 0) {
-                val h = totalDur / 3_600_000L
-                val m = (totalDur % 3_600_000L) / 60_000L
-                Text(
-                    if (h > 0) "${h}h ${m}m" else "${m}m total",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = appColors.textTertiary
-                )
-            }
-        }
-
-        // Chevron
-        Icon(Icons.Filled.ChevronRight, null, tint = appColors.textTertiary,
-            modifier = Modifier.padding(end = 12.dp).size(18.dp))
+        Icon(Icons.Filled.FolderOpen, null, tint = NebulaViolet, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(name, style = MaterialTheme.typography.labelLarge,
+            color = appColors.textPrimary, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
+        Text("$count videos", style = MaterialTheme.typography.labelSmall, color = appColors.textTertiary)
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.ChevronRight, null, tint = appColors.textTertiary, modifier = Modifier.size(16.dp))
     }
 }
 
