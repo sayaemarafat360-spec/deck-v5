@@ -301,11 +301,28 @@ private fun EqBand(
         val normSnap = animNorm
         Box(
             Modifier.weight(1f).fillMaxWidth().padding(horizontal = 4.dp)
-                .pointerInput(enabled) {
+                .pointerInput(enabled, value) {
+                    // Fix #4 — awaitPointerEventScope with consume() prevents the
+                    // parent Column/scroll from stealing vertical drag events.
+                    // detectDragGestures loses to parent scroll; this does not.
                     if (!enabled) return@pointerInput
-                    detectDragGestures { _, drag ->
-                        val delta = -drag.y / size.height * 24f
-                        onChanged((value + delta).coerceIn(-12f, 12f))
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            var lastY = down.position.y
+                            do {
+                                val event  = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                val dy     = change.position.y - lastY
+                                if (kotlin.math.abs(dy) > 0.5f) {
+                                    change.consume()
+                                    val delta = -dy / size.height * 24f
+                                    onChanged((value + delta).coerceIn(-12f, 12f))
+                                    lastY = change.position.y
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
                     }
                 }
         ) {

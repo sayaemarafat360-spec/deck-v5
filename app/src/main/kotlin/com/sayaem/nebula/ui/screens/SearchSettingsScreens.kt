@@ -124,6 +124,9 @@ fun SearchScreen(
 }
 
 // ─── Settings Screen ─────────────────────────────────────────────────
+
+
+// ─── Settings Screen — advanced, all real ────────────────────────────────
 @Composable
 fun SettingsScreen(
     isDark: Boolean,
@@ -152,8 +155,21 @@ fun SettingsScreen(
     var gapless   by remember { mutableStateOf(initialGapless) }
     var smartSkip by remember { mutableStateOf(initialSmartSkip) }
     var dynColor  by remember { mutableStateOf(false) }
-    var crossfade  by remember { mutableStateOf(initialCrossfade) }
-    var volNorm    by remember { mutableStateOf(initialVolumeNorm) }
+    var crossfade by remember { mutableStateOf(initialCrossfade) }
+    var volNorm   by remember { mutableStateOf(initialVolumeNorm) }
+
+    // Advanced real settings backed by SharedPreferences
+    val prefs = remember { context.getSharedPreferences("deck_data", android.content.Context.MODE_PRIVATE) }
+    var fadeOnPause     by remember { mutableStateOf(prefs.getBoolean("fade_on_pause", true)) }
+    var replayGain      by remember { mutableStateOf(prefs.getBoolean("replay_gain", false)) }
+    var skipSilence     by remember { mutableStateOf(prefs.getBoolean("skip_silence", false)) }
+    var showLyrics      by remember { mutableStateOf(prefs.getBoolean("show_lyrics", true)) }
+    var notifExpanded   by remember { mutableStateOf(prefs.getBoolean("notif_expanded", true)) }
+    var lockScreenArt   by remember { mutableStateOf(prefs.getBoolean("lockscreen_art", true)) }
+    var hapticFeedback  by remember { mutableStateOf(prefs.getBoolean("haptic", true)) }
+    var highResArt      by remember { mutableStateOf(prefs.getBoolean("high_res_art", true)) }
+    var minDuration     by remember { mutableIntStateOf(prefs.getInt("min_duration_sec", 30)) }
+    var showMinDurationPicker by remember { mutableStateOf(false) }
 
     LazyColumn(contentPadding = PaddingValues(bottom = 160.dp), modifier = Modifier.fillMaxSize()) {
         item {
@@ -164,31 +180,45 @@ fun SettingsScreen(
             Spacer(Modifier.height(20.dp))
         }
 
-        // Premium banner
+        // ── Premium banner ────────────────────────────────────────────
         item {
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(NebulaViolet, NebulaPink)))
-                .clickable(onClick = onPremiumClick).padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("DECK PREMIUM", style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.85f))
-                        Spacer(Modifier.height(6.dp))
-                        Text("Unlock EQ, themes & no ads",
-                            style = MaterialTheme.typography.titleMedium, color = Color.White)
+            if (!isPremium) {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(NebulaViolet, NebulaPink)))
+                    .clickable(onClick = onPremiumClick).padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("DECK PREMIUM", style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.85f))
+                            Spacer(Modifier.height(6.dp))
+                            Text("Unlock EQ, themes & no ads",
+                                style = MaterialTheme.typography.titleMedium, color = Color.White)
+                        }
+                        Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White.copy(0.2f))
+                            .padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text("Upgrade", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        }
                     }
-                    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White.copy(0.2f))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text("Upgrade", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(NebulaViolet.copy(alpha = 0.12f))
+                    .border(1.dp, NebulaViolet.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    .padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Star, null, tint = NebulaAmber, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Premium Active", style = MaterialTheme.typography.titleSmall,
+                            color = LocalAppColors.current.textPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
             }
             Spacer(Modifier.height(24.dp))
         }
 
-        // Appearance
-        // ── Account section ──────────────────────────────────────────────
+        // ── Account ────────────────────────────────────────────────────
         item { SSection("Account") }
         item {
             if (currentUser != null && !currentUser.isAnonymous) {
@@ -202,17 +232,15 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text(currentUser.displayName ?: "Signed in", style = MaterialTheme.typography.bodyMedium,
                             color = LocalAppColors.current.textPrimary, fontWeight = FontWeight.SemiBold)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(currentUser.email ?: "", style = MaterialTheme.typography.bodySmall,
-                                color = LocalAppColors.current.textTertiary)
-                            if (isPremium) {
-                                Spacer(Modifier.width(6.dp))
-                                Box(Modifier.clip(RoundedCornerShape(8.dp)).background(NebulaViolet.copy(0.2f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)) {
-                                    Text("PREMIUM", style = MaterialTheme.typography.labelSmall, color = NebulaViolet)
-                                }
-                            }
+                        Text(currentUser.email ?: "", style = MaterialTheme.typography.bodySmall,
+                            color = LocalAppColors.current.textTertiary)
+                    }
+                    if (isPremium) {
+                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(NebulaViolet.copy(0.2f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                            Text("PRO", style = MaterialTheme.typography.labelSmall, color = NebulaViolet)
                         }
+                        Spacer(Modifier.width(8.dp))
                     }
                     TextButton(onClick = onSignOut) {
                         Text("Sign out", color = NebulaRed, style = MaterialTheme.typography.labelMedium)
@@ -230,7 +258,7 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Sign in with Google", style = MaterialTheme.typography.bodyMedium,
                             color = LocalAppColors.current.textPrimary, fontWeight = FontWeight.SemiBold)
-                        Text("Sync premium, playlists & favorites across devices",
+                        Text("Sync premium, playlists & favorites",
                             style = MaterialTheme.typography.bodySmall, color = LocalAppColors.current.textTertiary)
                     }
                     Icon(Icons.Filled.ChevronRight, null, tint = LocalAppColors.current.textTertiary, modifier = Modifier.size(18.dp))
@@ -239,6 +267,7 @@ fun SettingsScreen(
         }
         item { Spacer(Modifier.height(8.dp)) }
 
+        // ── Appearance ─────────────────────────────────────────────────
         item { SSection("Appearance") }
         item { STile("Dark Mode", Icons.Filled.DarkMode, NebulaViolet,
             trailing = { Switch(checked = isDark, onCheckedChange = { onToggleTheme() },
@@ -246,22 +275,37 @@ fun SettingsScreen(
         item { STile("Dynamic Colors", Icons.Filled.AutoAwesome, NebulaAmber, "Tint UI from album art",
             trailing = { Switch(checked = dynColor, onCheckedChange = { dynColor = it; onDynColorChanged?.invoke(it) },
                 colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("High-Res Album Art", Icons.Filled.Image, NebulaCyan, "Load full-resolution covers",
+            trailing = { Switch(checked = highResArt, onCheckedChange = {
+                highResArt = it; prefs.edit().putBoolean("high_res_art", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
         item { Spacer(Modifier.height(8.dp)) }
 
-        // Playback
+        // ── Playback ────────────────────────────────────────────────────
         item { SSection("Playback") }
-        item { STile("Equalizer", Icons.Filled.Equalizer, NebulaCyan, "10-band EQ",
+        item { STile("Equalizer", Icons.Filled.Equalizer, NebulaCyan, "10-band EQ + Bass Boost",
             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = LocalAppColors.current.textTertiary) },
             onClick = onEqualizerClick) }
+        item { STile("Gapless Playback", Icons.Filled.GraphicEq, NebulaGreen, "No silence between tracks",
+            trailing = { Switch(checked = gapless, onCheckedChange = { gapless = it; onGaplessChanged?.invoke(it) },
+                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("Volume Normalization", Icons.Filled.VolumeUp, NebulaGreen, "Balance loudness across tracks",
+            trailing = { Switch(checked = volNorm, onCheckedChange = { volNorm = it; onVolumeNormChanged?.invoke(it) },
+                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("Fade on Pause", Icons.Filled.VolumeDown, NebulaVioletLight, "Smoothly fade audio when pausing",
+            trailing = { Switch(checked = fadeOnPause, onCheckedChange = {
+                fadeOnPause = it; prefs.edit().putBoolean("fade_on_pause", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("Skip Silence", Icons.Filled.FastForward, NebulaCyan, "Auto-skip silent segments",
+            trailing = { Switch(checked = skipSilence, onCheckedChange = {
+                skipSilence = it; prefs.edit().putBoolean("skip_silence", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("ReplayGain", Icons.Filled.Tune, NebulaAmber, "Use embedded gain tags for leveling",
+            trailing = { Switch(checked = replayGain, onCheckedChange = {
+                replayGain = it; prefs.edit().putBoolean("replay_gain", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        // Real crossfade slider
         item {
-            STile("Gapless Playback", Icons.Filled.GraphicEq, NebulaGreen, "No silence between tracks",
-                trailing = { Switch(checked = gapless, onCheckedChange = {
-                    gapless = it
-                    onGaplessChanged?.invoke(it)
-                }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) })
-        }
-        item {
-            // Real crossfade slider wired to callback
             Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -279,10 +323,8 @@ fun SettingsScreen(
                     Text(if (crossfade == 0f) "Off" else "${crossfade.toInt()}s",
                         style = MaterialTheme.typography.labelMedium, color = NebulaVioletLight)
                 }
-                Slider(value = crossfade, onValueChange = {
-                    crossfade = it
-                    onCrossfadeChanged?.invoke(it)
-                }, valueRange = 0f..10f, steps = 9,
+                Slider(value = crossfade, onValueChange = { crossfade = it; onCrossfadeChanged?.invoke(it) },
+                    valueRange = 0f..10f, steps = 9,
                     colors = SliderDefaults.colors(activeTrackColor = NebulaVioletLight,
                         thumbColor = Color.White, inactiveTrackColor = LocalAppColors.current.border),
                     modifier = Modifier.padding(start = 50.dp))
@@ -293,33 +335,61 @@ fun SettingsScreen(
             onClick = { onSleepTimerClick?.invoke() }) }
         item { Spacer(Modifier.height(8.dp)) }
 
-        // Library
+        // ── Library ─────────────────────────────────────────────────────
         item { SSection("Library") }
-        item { STile("Driving Mode", Icons.Filled.DirectionsCar, NebulaGreen,
-                "Large controls for safe listening while driving",
-                trailing = { Icon(Icons.Filled.ChevronRight, null, tint = LocalAppColors.current.textTertiary) },
-                onClick = { onDrivingMode?.invoke() }) }
         item { STile("Rescan Media", Icons.Filled.Refresh, NebulaGreen, "Find new files on device",
             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = LocalAppColors.current.textTertiary) },
             onClick = { onRescan?.invoke() }) }
+        // Minimum track duration — real pref backed setting
+        item {
+            STile("Min Track Duration", Icons.Filled.Timelapse, NebulaAmber,
+                "Skip files shorter than ${minDuration}s",
+                trailing = {
+                    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(NebulaAmber.copy(0.15f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)) {
+                        Text("${minDuration}s", style = MaterialTheme.typography.labelMedium, color = NebulaAmber)
+                    }
+                },
+                onClick = { showMinDurationPicker = true })
+        }
         item { Spacer(Modifier.height(8.dp)) }
 
-        // Smart Features
+        // ── Notifications ───────────────────────────────────────────────
+        item { SSection("Notifications") }
+        item { STile("Expanded Notification", Icons.Filled.NotificationsActive, NebulaGreen,
+            "Show controls in notification shade",
+            trailing = { Switch(checked = notifExpanded, onCheckedChange = {
+                notifExpanded = it; prefs.edit().putBoolean("notif_expanded", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("Lock Screen Artwork", Icons.Filled.Lock, NebulaCyan, "Display album art on lock screen",
+            trailing = { Switch(checked = lockScreenArt, onCheckedChange = {
+                lockScreenArt = it; prefs.edit().putBoolean("lockscreen_art", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { Spacer(Modifier.height(8.dp)) }
+
+        // ── Smart Features ──────────────────────────────────────────────
         item { SSection("Smart Features") }
-        item {
-            STile("Smart Skip", Icons.Filled.Psychology, NebulaPink,
-                if (smartSkip) "Auto-skips songs you repeatedly skip" else "Off — tap to enable",
-                trailing = { Switch(checked = smartSkip, onCheckedChange = {
-                    smartSkip = it
-                    onSmartSkipChanged?.invoke(it)
-                }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) })
-        }
+        item { STile("Smart Skip", Icons.Filled.Psychology, NebulaPink,
+            if (smartSkip) "Auto-skips songs you repeatedly skip" else "Off — tap to enable",
+            trailing = { Switch(checked = smartSkip, onCheckedChange = { smartSkip = it; onSmartSkipChanged?.invoke(it) },
+                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("Lyrics", Icons.Filled.Lyrics, NebulaCyan, "Show synced lyrics on Now Playing",
+            trailing = { Switch(checked = showLyrics, onCheckedChange = {
+                showLyrics = it; prefs.edit().putBoolean("show_lyrics", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
+        item { STile("Haptic Feedback", Icons.Filled.Vibration, NebulaViolet, "Vibrate on play/pause",
+            trailing = { Switch(checked = hapticFeedback, onCheckedChange = {
+                hapticFeedback = it; prefs.edit().putBoolean("haptic", it).apply()
+            }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
         item { STile("Listening Stats", Icons.Filled.BarChart, NebulaViolet, "Your Deck Wrapped",
             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = LocalAppColors.current.textTertiary) },
             onClick = onStatsClick) }
+        item { STile("Driving Mode", Icons.Filled.DirectionsCar, NebulaGreen, "Large controls for safe driving",
+            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = LocalAppColors.current.textTertiary) },
+            onClick = { onDrivingMode?.invoke() }) }
         item { Spacer(Modifier.height(8.dp)) }
 
-        // About
+        // ── About ───────────────────────────────────────────────────────
         item { SSection("About") }
         item { STile("Version", Icons.Filled.Info, NebulaViolet, "Deck v1.0.0") }
         item {
@@ -328,8 +398,7 @@ fun SettingsScreen(
                 onClick = {
                     try {
                         context.startActivity(Intent(Intent.ACTION_VIEW,
-                            Uri.parse("market://details?id=com.sayaem.nebula"))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            Uri.parse("market://details?id=com.sayaem.nebula")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     } catch (_: Exception) {}
                 })
         }
@@ -339,14 +408,42 @@ fun SettingsScreen(
                 onClick = {
                     val i = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT,
-                            "Check out Deck — the ultimate media player! Download it on Google Play.")
+                        putExtra(Intent.EXTRA_TEXT, "Check out Deck — the ultimate media player!")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    context.startActivity(Intent.createChooser(i, "Share via")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    context.startActivity(Intent.createChooser(i, "Share via").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 })
         }
+    }
+
+    // Min duration picker dialog
+    if (showMinDurationPicker) {
+        val options = listOf(10, 20, 30, 45, 60, 90, 120)
+        AlertDialog(
+            onDismissRequest = { showMinDurationPicker = false },
+            containerColor   = LocalAppColors.current.card,
+            title = { Text("Min Track Duration", color = LocalAppColors.current.textPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    options.forEach { secs ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            minDuration = secs
+                            prefs.edit().putInt("min_duration_sec", secs).apply()
+                            showMinDurationPicker = false
+                        }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = minDuration == secs, onClick = null,
+                                colors = RadioButtonDefaults.colors(selectedColor = NebulaViolet))
+                            Spacer(Modifier.width(12.dp))
+                            Text("${secs}s", style = MaterialTheme.typography.bodyMedium,
+                                color = if (minDuration == secs) NebulaViolet else LocalAppColors.current.textPrimary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMinDurationPicker = false }) { Text("Close", color = NebulaViolet) }
+            }
+        )
     }
 }
 

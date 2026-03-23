@@ -140,9 +140,14 @@ class PlayerController(private val context: Context) {
         syncState()
     }
 
-    // Append song to end of queue
+    // Append song to end of queue — if nothing is playing, start it immediately
     fun addToQueue(song: Song) {
         val p = _service?.exoPlayer ?: return
+        if (currentQueue.isEmpty()) {
+            // Nothing loaded yet — just start playing
+            playQueue(listOf(song), 0)
+            return
+        }
         currentQueue = currentQueue + song
         p.addMediaItem(MediaItem.fromUri(song.uri))
         syncState()

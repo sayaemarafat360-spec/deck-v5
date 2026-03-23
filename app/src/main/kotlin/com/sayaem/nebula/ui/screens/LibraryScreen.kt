@@ -18,6 +18,11 @@ import androidx.compose.ui.unit.*
 import com.sayaem.nebula.data.models.Playlist
 import com.sayaem.nebula.data.models.Song
 import com.sayaem.nebula.ui.components.SongTile
+import com.sayaem.nebula.ui.components.VideoThumbnail
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import com.sayaem.nebula.ui.components.SwipeableSongTile
 import com.sayaem.nebula.ui.theme.*
 import com.sayaem.nebula.ui.theme.LocalAppColors
@@ -141,13 +146,22 @@ private fun VideosTab(videos: List<Song>, onVideoClick: (Song) -> Unit, onMoreCl
                     .background(LocalAppColors.current.card).border(0.5.dp, LocalAppColors.current.border, RoundedCornerShape(14.dp))
                     .clickable { onVideoClick(video) }.height(88.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.width(130.dp).fillMaxHeight()
-                        .clip(RoundedCornerShape(topStart = 13.dp, bottomStart = 13.dp))
-                        .background(NebulaRed.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.PlayCircle, null, tint = NebulaRed, modifier = Modifier.size(36.dp))
+                    // Fix #2 — Real video frame thumbnail
+                    VideoThumbnail(
+                        filePath = video.filePath,
+                        modifier = Modifier.width(130.dp).fillMaxHeight()
+                            .clip(RoundedCornerShape(topStart = 13.dp, bottomStart = 13.dp))
+                    ) {
+                        // Scrim + play overlay
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
+                        Box(Modifier.size(32.dp).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .border(1.dp, Color.White.copy(alpha = 0.7f), CircleShape)
+                            .align(Alignment.Center), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
                         Box(Modifier.align(Alignment.BottomEnd).padding(6.dp)
-                            .clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(0.7f))
+                            .clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(0.75f))
                             .padding(horizontal = 4.dp, vertical = 2.dp)) {
                             Text(video.durationFormatted, style = MaterialTheme.typography.labelSmall, color = Color.White)
                         }

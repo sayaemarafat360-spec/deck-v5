@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import com.sayaem.nebula.data.models.PlaybackState
 import com.sayaem.nebula.ui.theme.*
 import com.sayaem.nebula.ui.theme.LocalAppColors
@@ -380,4 +383,54 @@ fun AdMobBanner(modifier: Modifier = Modifier) {
         },
         modifier = modifier.fillMaxWidth().height(50.dp)
     )
+}
+
+// ── VideoThumbnail — real frame extracted from file via ThumbnailUtils ────
+// Works on all API levels without any extra dependency.
+// The icon placeholder is always rendered underneath so it shows if extraction fails.
+@Composable
+fun VideoThumbnail(
+    filePath: String,
+    modifier: Modifier = Modifier,
+    overlayContent: @Composable BoxScope.() -> Unit = {},
+) {
+    var bmp by remember(filePath) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(filePath) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            bmp = try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    android.media.ThumbnailUtils.createVideoThumbnail(
+                        java.io.File(filePath),
+                        android.util.Size(480, 270), null
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.media.ThumbnailUtils.createVideoThumbnail(
+                        filePath, android.provider.MediaStore.Video.Thumbnails.MINI_KIND
+                    )
+                }
+            } catch (_: Exception) { null }
+        }
+    }
+    Box(modifier) {
+        // Fallback gradient always behind
+        Box(Modifier.fillMaxSize()
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(NebulaRed.copy(alpha = 0.3f), androidx.compose.ui.graphics.Color(0xFF100808))
+            )))
+        if (bmp != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bmp!!.asImageBitmap(),
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.VideoFile, null, tint = NebulaRed.copy(alpha = 0.5f),
+                    modifier = Modifier.size(36.dp))
+            }
+        }
+        overlayContent()
+    }
 }
