@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 
-
 class MediaRepository(private val context: Context) {
 
     private val _songs     = MutableStateFlow<List<Song>>(emptyList())
@@ -101,10 +100,13 @@ class MediaRepository(private val context: Context) {
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATA,
+            MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
         )
         context.contentResolver.query(collection, projection,
             "${MediaStore.Video.Media.SIZE} > 100000", null,
-            "${MediaStore.Video.Media.TITLE} ASC")?.use { cursor ->
+            "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
             val idCol    = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.TITLE)
             val artCol   = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.ARTIST)
@@ -112,8 +114,14 @@ class MediaRepository(private val context: Context) {
             val durCol   = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
             val sizeCol  = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val dataCol  = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
+
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
+                // Fix #4: Real video thumbnail URI via MediaStore
+                val thumbUri = ContentUris.withAppendedId(
+                    Uri.parse("content://media/external/video/media"), id
+                ).buildUpon().appendQueryParameter("thumbnail", "1").build()
+
                 videos.add(Song(
                     id          = id,
                     title       = cursor.getString(titleCol) ?: "Unknown",
@@ -122,7 +130,8 @@ class MediaRepository(private val context: Context) {
                     uri         = ContentUris.withAppendedId(collection, id),
                     duration    = cursor.getLong(durCol),
                     size        = cursor.getLong(sizeCol),
-                    albumArtUri = null,
+                    // Fix #4: Use MediaStore video thumbnail URI — Coil resolves this natively
+                    albumArtUri = thumbUri,
                     filePath    = cursor.getString(dataCol)  ?: "",
                     isVideo     = true,
                 ))
@@ -141,7 +150,6 @@ class MediaRepository(private val context: Context) {
         }
     }
 
-    // ── Tag Editor: update title/artist/album via MediaStore ──────────
     suspend fun updateTags(
         context: android.content.Context,
         song: com.sayaem.nebula.data.models.Song,
@@ -168,7 +176,6 @@ class MediaRepository(private val context: Context) {
         }
     }
 
-    // ── Recently Added: songs added in last N days ────────────────────
     suspend fun getRecentlyAdded(days: Int = 7): List<com.sayaem.nebula.data.models.Song> =
         withContext(Dispatchers.IO) {
             val cutoff = System.currentTimeMillis() / 1000 - (days * 86400)
@@ -178,6 +185,7 @@ class MediaRepository(private val context: Context) {
                 android.provider.MediaStore.Audio.Media.TITLE,
                 android.provider.MediaStore.Audio.Media.ARTIST,
                 android.provider.MediaStore.Audio.Media.ALBUM,
+                android.provider.MediaStore.Audio.Media.ALBUM_ID,
                 android.provider.MediaStore.Audio.Media.DURATION,
                 android.provider.MediaStore.Audio.Media.SIZE,
                 android.provider.MediaStore.Audio.Media.DATA,
@@ -193,11 +201,15 @@ class MediaRepository(private val context: Context) {
                     val titleCol  = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.TITLE)
                     val artistCol = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.ARTIST)
                     val albumCol  = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.ALBUM)
+                    val albumIdCol= cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.ALBUM_ID)
                     val durCol    = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DURATION)
                     val sizeCol   = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.SIZE)
                     val pathCol   = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Audio.Media.DATA)
                     while (cursor.moveToNext()) {
                         val id  = cursor.getLong(idCol)
+                        val albumId = cursor.getLong(albumIdCol)
+                        val artUri = android.content.ContentUris.withAppendedId(
+                            android.net.Uri.parse("content://media/external/audio/albumart"), albumId)
                         val cUri = android.net.Uri.withAppendedPath(
                             android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id.toString())
                         results.add(com.sayaem.nebula.data.models.Song(
@@ -206,7 +218,7 @@ class MediaRepository(private val context: Context) {
                             album  = cursor.getString(albumCol) ?: "Unknown",
                             uri    = cUri, duration = cursor.getLong(durCol),
                             size   = cursor.getLong(sizeCol),
-                            albumArtUri = null, filePath = cursor.getString(pathCol) ?: "",
+                            albumArtUri = artUri, filePath = cursor.getString(pathCol) ?: "",
                         ))
                     }
                 }

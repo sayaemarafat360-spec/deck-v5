@@ -221,6 +221,11 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                             onVideoClick   = { song -> videoSong = song },
                             onPremiumClick = { navigateTo(Screen.Premium) },
                             onStatsClick   = { navigateTo(Screen.Stats) },
+                            // Fix #5 — wire see-all navigation
+                            onSeeAllSongs  = { navigateTo(Screen.Library) },
+                            onSeeAllVideos = { navigateTo(Screen.Library) },
+                            // Fix #2 — pull to refresh triggers media scan
+                            onRefresh      = { vm.scanMedia() },
                         )
                         Screen.Library -> LibraryScreen(
                             songs    = songs, videos = videos,
@@ -288,6 +293,8 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                             songs = songs, videos = videos, recentSongs = recentSongs,
                             onSongClick = { vm.playSong(it) }, onVideoClick = {},
                             onPremiumClick = {}, onStatsClick = {},
+                            onSeeAllSongs = { navigateTo(Screen.Library) },
+                            onSeeAllVideos = { navigateTo(Screen.Library) },
                         )
                     }
                 }

@@ -4,6 +4,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -13,6 +14,7 @@ import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -24,8 +26,10 @@ import com.sayaem.nebula.data.models.Song
 import com.sayaem.nebula.ui.theme.*
 import com.sayaem.nebula.ui.theme.LocalAppColors
 import com.sayaem.nebula.ui.components.AdMobBanner
-import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     songs: List<Song>,
@@ -40,22 +44,46 @@ fun HomeScreen(
     onMoreVideoClick: ((Song) -> Unit)? = null,
     isPremium: Boolean = false,
     recentlyAdded: List<Song> = emptyList(),
+    onSeeAllSongs: () -> Unit = {},     // Fix #5 — see all wired
+    onSeeAllVideos: () -> Unit = {},
+    onRefresh: (() -> Unit)? = null,    // Fix #2 — pull to refresh
 ) {
     val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     val greeting = when (hour) {
         in 0..11 -> "Good morning"; in 12..16 -> "Good afternoon"; else -> "Good evening"
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = if (isPremium) 160.dp else 210.dp)
-    ) {
+    // Fix #2 — pull to refresh state
+    var isRefreshing by remember { mutableStateOf(false) }
+    val pullRefreshState = rememberPullToRefreshState()
 
-        // ── Header ──────────────────────────────────────────────────
-        item {
+    LaunchedEffect(pullRefreshState.isRefreshing) {
+        if (pullRefreshState.isRefreshing) {
+            isRefreshing = true
+            onRefresh?.invoke()
+            kotlinx.coroutines.delay(1200)
+            isRefreshing = false
+            pullRefreshState.endRefresh()
+        }
+    }
+
+    // Group videos by date for date-based sorting
+    val videosByDate = remember(videos) {
+        videos.groupBy { song ->
+            // Use "Today", "Yesterday", or formatted date
+            "All Videos" // Simplified grouping — real impl would use DATE_ADDED
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        // Fix #8 — Static top bar OUTSIDE LazyColumn
+        Column(Modifier.fillMaxSize()) {
+            // ── Static header — never scrolls ──────────────────────────
             Row(
                 Modifier.fillMaxWidth()
-                    .padding(start = 20.dp, end = 12.dp, top = 56.dp, bottom = 8.dp),
+                    .background(LocalAppColors.current.bg)
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -72,138 +100,178 @@ fun HomeScreen(
                     }
                 }
             }
-        }
 
-        // ── Stats row ───────────────────────────────────────────────
-        item {
+            // Stats strip
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth()
+                    .background(LocalAppColors.current.bg)
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 StatPill("${songs.size}", "Songs", NebulaViolet, Icons.Filled.MusicNote, Modifier.weight(1f))
                 StatPill("${videos.size}", "Videos", NebulaRed, Icons.Filled.VideoFile, Modifier.weight(1f))
                 StatPill("${(songs + videos).groupBy { it.album }.size}", "Albums", NebulaCyan, Icons.Filled.Album, Modifier.weight(1f))
             }
-        }
 
-        // ── FEATURED VIDEO — hero card ───────────────────────────────
-        if (videos.isNotEmpty()) {
-            item {
-                SectionHeader("Featured Video", Icons.Filled.PlayCircle, NebulaRed)
-            }
-            item {
-                FeaturedVideoCard(
-                    video = videos.first(),
-                    onClick = { onVideoClick(videos.first()) },
-                    onMoreClick = { onMoreVideoClick?.invoke(videos.first()) }
-                )
-            }
-        }
+            HorizontalDivider(color = LocalAppColors.current.borderSubtle, thickness = 0.5.dp)
 
-        // ── ALL VIDEOS grid ─────────────────────────────────────────
-        if (videos.size > 1) {
-            item {
-                SectionHeader(
-                    "All Videos", Icons.Filled.VideoLibrary, NebulaRed,
-                    badge = "${videos.size}"
-                )
-            }
-            item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // Fix #2 — Scrollable area with pull-to-refresh
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    isRefreshing = true
+                    onRefresh?.invoke()
+                },
+                modifier = Modifier.fillMaxSize(),
+                state = pullRefreshState,
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullRefreshState,
+                        isRefreshing = isRefreshing,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        color = NebulaViolet,
+                        containerColor = LocalAppColors.current.card,
+                    )
+                }
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = if (isPremium) 160.dp else 210.dp)
                 ) {
-                    items(videos.drop(1).take(20)) { video ->
-                        VideoCard(
-                            video = video,
-                            onClick = { onVideoClick(video) },
-                            onMoreClick = { onMoreVideoClick?.invoke(video) }
-                        )
-                    }
-                }
-            }
-        }
 
-        // ── Recently Added ───────────────────────────────────────────
-        if (recentlyAdded.isNotEmpty()) {
-            item {
-                SectionHeader("Recently Added", Icons.Filled.FiberNew, NebulaGreen,
-                    badge = "Last 7 days")
-            }
-            item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(recentlyAdded.take(10)) { song ->
-                        AlbumCard(song = song, onClick = { onSongClick(song) },
-                            onMoreClick = { onMoreClick?.invoke(song) })
+                    // ── Fix #3 — VIDEO FIRST: Big featured hero card ─────────────
+                    if (videos.isNotEmpty()) {
+                        item {
+                            SectionHeader("Videos", Icons.Filled.VideoLibrary, NebulaRed,
+                                badge = "${videos.size}",
+                                onSeeAll = if (videos.size > 1) onSeeAllVideos else null)
+                        }
+                        // Large hero card for latest video
+                        item {
+                            FeaturedVideoCard(
+                                video = videos.first(),
+                                onClick = { onVideoClick(videos.first()) },
+                                onMoreClick = { onMoreVideoClick?.invoke(videos.first()) }
+                            )
+                        }
+                        // Horizontal row of remaining videos with real thumbnails
+                        if (videos.size > 1) {
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(videos.drop(1).take(20)) { video ->
+                                        VideoCard(
+                                            video = video,
+                                            onClick = { onVideoClick(video) },
+                                            onMoreClick = { onMoreVideoClick?.invoke(video) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
-            }
-        }
 
-        // ── Recently Played ──────────────────────────────────────────
-        if (recentSongs.isNotEmpty()) {
-            item { SectionHeader("Recently Played", Icons.Filled.History, NebulaViolet) }
-            item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(recentSongs.take(10)) { song ->
-                        AlbumCard(song = song, onClick = { onSongClick(song) },
-                            onMoreClick = { onMoreClick?.invoke(song) })
+                    // ── Recently Added ─────────────────────────────────────────────
+                    if (recentlyAdded.isNotEmpty()) {
+                        item {
+                            SectionHeader("Recently Added", Icons.Filled.FiberNew, NebulaGreen,
+                                badge = "Last 7 days")
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(recentlyAdded.take(10)) { song ->
+                                    AlbumCard(song = song, onClick = { onSongClick(song) },
+                                        onMoreClick = { onMoreClick?.invoke(song) })
+                                }
+                            }
+                        }
                     }
-                }
-            }
-        }
 
-        // ── Songs quick list ─────────────────────────────────────────
-        if (songs.isNotEmpty()) {
-            item {
-                SectionHeader("Songs", Icons.Filled.MusicNote, NebulaViolet,
-                    badge = "${songs.size} tracks")
-            }
-            items(songs.take(6)) { song ->
-                SongRow(
-                    song = song,
-                    onClick = { onSongClick(song) },
-                    onMoreClick = { onMoreClick?.invoke(song) }
-                )
-            }
-            if (songs.size > 6) {
-                item {
-                    Box(Modifier.fillMaxWidth().clickable {}.padding(vertical = 14.dp),
-                        contentAlignment = Alignment.Center) {
-                        Text("See all ${songs.size} songs in Library →",
-                            style = MaterialTheme.typography.labelLarge, color = NebulaViolet)
+                    // ── Recently Played ────────────────────────────────────────────
+                    if (recentSongs.isNotEmpty()) {
+                        item { SectionHeader("Recently Played", Icons.Filled.History, NebulaViolet) }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(recentSongs.take(10)) { song ->
+                                    AlbumCard(song = song, onClick = { onSongClick(song) },
+                                        onMoreClick = { onMoreClick?.invoke(song) })
+                                }
+                            }
+                        }
                     }
-                }
-            }
-        }
 
-        // ── AdMob for free users
-        if (!isPremium) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(0.dp, 4.dp)) {
-                    AdMobBanner()
+                    // ── Songs vertical list (Fix #3 vertical scrolling) ──────────
+                    if (songs.isNotEmpty()) {
+                        item {
+                            SectionHeader("Songs", Icons.Filled.MusicNote, NebulaViolet,
+                                badge = "${songs.size} tracks",
+                                // Fix #5 — see all is now wired
+                                onSeeAll = if (songs.size > 6) onSeeAllSongs else null)
+                        }
+                        items(songs.take(8)) { song ->
+                            SongRow(
+                                song = song,
+                                onClick = { onSongClick(song) },
+                                onMoreClick = { onMoreClick?.invoke(song) }
+                            )
+                        }
+                        // Fix #5 — See All wired
+                        if (songs.size > 8) {
+                            item {
+                                Box(
+                                    Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(NebulaViolet.copy(0.08f))
+                                        .border(0.5.dp, NebulaViolet.copy(0.25f), RoundedCornerShape(14.dp))
+                                        .clickable(onClick = onSeeAllSongs)   // FIX: was empty
+                                        .padding(vertical = 14.dp)
+                                        .padding(horizontal = 20.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center) {
+                                        Text("See all ${songs.size} songs in Library",
+                                            style = MaterialTheme.typography.labelLarge, color = NebulaViolet)
+                                        Spacer(Modifier.width(4.dp))
+                                        Icon(Icons.Filled.ChevronRight, null, tint = NebulaViolet, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                    }
+
+                    // ── AdMob for free users ─────────────────────────────────────
+                    if (!isPremium) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(0.dp, 4.dp)) { AdMobBanner() }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// ── Section header ─────────────────────────────────────────────────────
+// ── Section header with optional "See All" action ──────────────────────
 @Composable
 private fun SectionHeader(
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     color: Color,
     badge: String? = null,
+    onSeeAll: (() -> Unit)? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -212,9 +280,22 @@ private fun SectionHeader(
             Spacer(Modifier.width(8.dp))
             Text(title, style = MaterialTheme.typography.headlineSmall,
                 color = LocalAppColors.current.textPrimary, fontWeight = FontWeight.Bold)
+            if (badge != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(badge, style = MaterialTheme.typography.labelSmall,
+                    color = LocalAppColors.current.textTertiary)
+            }
         }
-        if (badge != null) {
-            Text(badge, style = MaterialTheme.typography.labelSmall, color = LocalAppColors.current.textTertiary)
+        if (onSeeAll != null) {
+            Row(
+                Modifier.clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onSeeAll)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("See all", style = MaterialTheme.typography.labelMedium, color = color)
+                Icon(Icons.Filled.ChevronRight, null, tint = color, modifier = Modifier.size(14.dp))
+            }
         }
     }
 }
@@ -237,29 +318,36 @@ private fun IconBox(
     }
 }
 
-// ── FEATURED VIDEO — large hero card ───────────────────────────────────
+// ── Fix #3 & #4 — FEATURED VIDEO with real thumbnail ───────────────────
 @Composable
-private fun FeaturedVideoCard(
-    video: Song,
-    onClick: () -> Unit,
-    onMoreClick: () -> Unit,
-) {
+private fun FeaturedVideoCard(video: Song, onClick: () -> Unit, onMoreClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(220.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF120A0A))
-            .border(0.5.dp, NebulaRed.copy(0.2f), RoundedCornerShape(20.dp))
+            .border(0.5.dp, NebulaRed.copy(0.25f), RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
     ) {
-        // Thumbnail or gradient
-        Box(
-            Modifier.fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(NebulaRed.copy(0.15f), Color(0xFF120A0A))
-                    )
-                )
-        )
+        // Fix #4 — Real video thumbnail
+        if (video.albumArtUri != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(video.albumArtUri)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(NebulaRed.copy(0.25f), Color(0xFF120A0A))))
+            )
+        }
+        // Dark scrim for readability
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.35f)))
+
         // Big play button
         Box(
             Modifier.size(64.dp).clip(CircleShape)
@@ -268,42 +356,51 @@ private fun FeaturedVideoCard(
                 .align(Alignment.Center),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.PlayArrow, null, tint = Color.White,
-                modifier = Modifier.size(34.dp))
+            Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(34.dp))
         }
+
+        // Duration badge top-right
+        Box(
+            Modifier.align(Alignment.TopEnd).padding(12.dp)
+                .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(0.75f))
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Text(video.durationFormatted, style = MaterialTheme.typography.labelSmall, color = Color.White)
+        }
+
         // Bottom info row
         Row(
             Modifier.fillMaxWidth().align(Alignment.BottomStart)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.9f))))
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.92f))))
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Featured", style = MaterialTheme.typography.labelSmall,
-                    color = NebulaRed, fontWeight = FontWeight.Bold)
+                Box(
+                    Modifier.clip(RoundedCornerShape(4.dp))
+                        .background(NebulaRed)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text("VIDEO", style = MaterialTheme.typography.labelSmall,
+                        color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(4.dp))
                 Text(video.title, style = MaterialTheme.typography.titleMedium,
                     color = Color.White, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(video.durationFormatted, style = MaterialTheme.typography.labelSmall,
+                Text(video.sizeFormatted, style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(0.6f))
             }
-            IconButton(
-                onClick = onMoreClick,
-                modifier = Modifier.size(36.dp)
-            ) {
+            IconButton(onClick = onMoreClick, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Filled.MoreVert, null, tint = Color.White.copy(0.8f))
             }
         }
     }
 }
 
-// ── VIDEO CARD (smaller, for the row) ──────────────────────────────────
+// ── Fix #4 — VIDEO CARD with real thumbnail ─────────────────────────────
 @Composable
-private fun VideoCard(
-    video: Song,
-    onClick: () -> Unit,
-    onMoreClick: () -> Unit,
-) {
+private fun VideoCard(video: Song, onClick: () -> Unit, onMoreClick: () -> Unit) {
     Column(Modifier.width(180.dp)) {
         Box(
             Modifier.width(180.dp).height(104.dp)
@@ -312,9 +409,21 @@ private fun VideoCard(
                 .border(0.5.dp, LocalAppColors.current.border, RoundedCornerShape(14.dp))
                 .clickable(onClick = onClick)
         ) {
-            // Gradient bg
-            Box(Modifier.fillMaxSize()
-                .background(Brush.verticalGradient(listOf(NebulaRed.copy(0.10f), Color(0xFF180A0A)))))
+            // Fix #4 — Real thumbnail via Coil
+            if (video.albumArtUri != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(video.albumArtUri).crossfade(true).build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(Modifier.fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(NebulaRed.copy(0.15f), Color(0xFF180A0A)))))
+            }
+            // Scrim
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(0.25f)))
             // Play overlay
             Box(
                 Modifier.size(36.dp).clip(CircleShape)
@@ -355,13 +464,9 @@ private fun VideoCard(
     }
 }
 
-// ── ALBUM CARD (for music rows) ─────────────────────────────────────────
+// ── ALBUM CARD — shows real album art or music note icon ─────────────────
 @Composable
-private fun AlbumCard(
-    song: Song,
-    onClick: () -> Unit,
-    onMoreClick: () -> Unit,
-) {
+private fun AlbumCard(song: Song, onClick: () -> Unit, onMoreClick: () -> Unit) {
     val colors = listOf(NebulaViolet, NebulaPink, NebulaCyan, NebulaAmber, NebulaGreen)
     val color  = colors[(song.id % colors.size).toInt().let { if (it < 0) -it else it }]
     Column(Modifier.width(116.dp)) {
@@ -377,12 +482,15 @@ private fun AlbumCard(
                         .data(song.albumArtUri).crossfade(true).build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)),
+                    error = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.MusicNote, null, tint = color, modifier = Modifier.size(38.dp))
+                    }}
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, null, tint = color, modifier = Modifier.size(38.dp))
             }
-            // 3-dot overlay top-right
+            // 3-dot overlay
             Box(
                 Modifier.size(26.dp).clip(RoundedCornerShape(6.dp))
                     .background(Color.Black.copy(0.45f))
@@ -392,7 +500,7 @@ private fun AlbumCard(
             ) {
                 Icon(Icons.Filled.MoreVert, null, tint = Color.White, modifier = Modifier.size(13.dp))
             }
-            // Play button bottom-right
+            // Play button
             Box(
                 Modifier.size(30.dp).clip(CircleShape).background(color)
                     .align(Alignment.BottomEnd).offset((-6).dp, (-6).dp),
@@ -409,13 +517,9 @@ private fun AlbumCard(
     }
 }
 
-// ── SONG ROW ────────────────────────────────────────────────────────────
+// ── SONG ROW ─────────────────────────────────────────────────────────────
 @Composable
-private fun SongRow(
-    song: Song,
-    onClick: () -> Unit,
-    onMoreClick: () -> Unit = {},
-) {
+private fun SongRow(song: Song, onClick: () -> Unit, onMoreClick: () -> Unit = {}) {
     val colors = listOf(NebulaViolet, NebulaPink, NebulaCyan, NebulaAmber, NebulaGreen)
     val color  = colors[(song.id % colors.size).toInt().let { if (it < 0) -it else it }]
     Row(
@@ -433,7 +537,8 @@ private fun SongRow(
                         .data(song.albumArtUri).crossfade(true).build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                    error = { Icon(Icons.Filled.MusicNote, null, tint = color, modifier = Modifier.size(22.dp)) }
                 )
             } else {
                 Icon(Icons.Filled.MusicNote, null, tint = color, modifier = Modifier.size(22.dp))
@@ -455,7 +560,7 @@ private fun SongRow(
     HorizontalDivider(Modifier.padding(start = 82.dp), color = LocalAppColors.current.borderSubtle, thickness = 0.5.dp)
 }
 
-// ── Stat pill ────────────────────────────────────────────────────────────
+// ── Stat pill ─────────────────────────────────────────────────────────────
 @Composable
 private fun StatPill(
     value: String, label: String, color: Color,
