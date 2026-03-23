@@ -23,8 +23,6 @@ workflows:
           chmod +x gradlew
 
       # ── Step 2: Install the repo keystore as the system debug keystore ─
-      # This guarantees the same SHA-1 fingerprint on every Codemagic build.
-      # The keystore at keystore/debug.keystore is committed to the repo.
       - name: Install fixed debug keystore
         script: |
           mkdir -p ~/.android
@@ -32,8 +30,6 @@ workflows:
           echo "Keystore installed at ~/.android/debug.keystore"
 
       # ── Step 3: PRINT SHA-1 — copy this into Firebase Console ─────────
-      # Firebase Console → Project Settings → Your Android App → Add fingerprint
-      # Paste the SHA1 value shown below under ">>> SHA1 >>>".
       - name: "PRINT SHA-1 FINGERPRINT — Add this to Firebase Console"
         script: |
           echo ""
@@ -48,7 +44,7 @@ workflows:
             -alias androiddebugkey \
             -storepass android \
             -keypass android 2>/dev/null \
-            | grep -E "^(Owner|Issuer|Serial|Valid|Certificate fingerprints|SHA1|SHA256|MD5)"
+            | grep -i "sha1"
           echo ""
           echo "--- SHA1 only (paste this into Firebase) ---"
           keytool -list \
@@ -56,7 +52,7 @@ workflows:
             -alias androiddebugkey \
             -storepass android \
             -keypass android 2>/dev/null \
-            | grep "SHA1"
+            | grep -i "sha1"
           echo "--- END ---"
           echo ""
 
@@ -112,7 +108,7 @@ workflows:
             -alias androiddebugkey \
             -storepass android \
             -keypass android 2>/dev/null \
-            | grep -E "^(Owner|Issuer|Serial|Valid|Certificate fingerprints|SHA1|SHA256|MD5)"
+            | grep -i "sha1"
           echo ""
           echo "--- SHA1 only (paste this into Firebase) ---"
           keytool -list \
@@ -120,7 +116,7 @@ workflows:
             -alias androiddebugkey \
             -storepass android \
             -keypass android 2>/dev/null \
-            | grep "SHA1"
+            | grep -i "sha1"
           echo "--- END ---"
           echo ""
 
