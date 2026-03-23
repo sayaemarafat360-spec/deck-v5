@@ -246,19 +246,25 @@ fun NowPlayingScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Extra actions
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ExtraBtn(Icons.Filled.Equalizer, "EQ",    onClick = onEqualizerClick)
-                ExtraBtn(Icons.Filled.Timer,
+            // Secondary actions — max 4, clean and tappable
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                ExtraBtn(Icons.Filled.Equalizer,
+                    "EQ",
+                    onClick = onEqualizerClick)
+                ExtraBtn(
+                    Icons.Filled.Timer,
                     if (sleepTimerState.isActive) sleepTimerState.remainingFormatted else "Sleep",
                     tint = if (sleepTimerState.isActive) NebulaCyan else null,
                     onClick = onSleepTimer)
-                ExtraBtn(Icons.Filled.Speed, "${currentSpeed}x", onClick = onSpeedClick)
-                ExtraBtn(Icons.Filled.Share, "Share",
-                    onClick = { song?.let { onShare(it) } })
-                ExtraBtn(Icons.Filled.Lyrics, "Lyrics",    onClick = { showLyrics = true })
-                ExtraBtn(Icons.Filled.Bookmark, "Bookmark", onClick = { onAddBookmark?.invoke() })
-                ExtraBtn(Icons.Filled.Edit, "Edit Tags", onClick = { state.currentSong?.let { onEditTag?.invoke(it) } })
+                ExtraBtn(Icons.Filled.Speed,
+                    "${currentSpeed}×",
+                    onClick = onSpeedClick)
+                ExtraBtn(Icons.Filled.Lyrics,
+                    "Lyrics",
+                    onClick = { showLyrics = true })
             }
         }
     }

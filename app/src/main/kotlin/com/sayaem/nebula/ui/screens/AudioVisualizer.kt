@@ -41,23 +41,30 @@ fun AudioVisualizer(
                         override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, samplingRate: Int) {}
 
                         override fun onFftDataCapture(v: Visualizer, fft: ByteArray, samplingRate: Int) {
-                            // FFT data: fft[0] = DC, fft[1] = Nyquist, rest = complex pairs
-                            // Extract magnitudes from complex FFT output
-                            val bars = FloatArray(barCount)
-                            val bucketSize = (fft.size / 2) / barCount
-                            for (i in 0 until barCount) {
-                                var sum = 0f
-                                val start = i * bucketSize + 1
-                                val end   = minOf(start + bucketSize, fft.size / 2)
-                                for (j in start until end) {
-                                    val real = fft[j * 2].toFloat()
-                                    val imag = if (j * 2 + 1 < fft.size) fft[j * 2 + 1].toFloat() else 0f
-                                    sum += kotlin.math.sqrt(real * real + imag * imag)
+                            // Fix: wrap entire FFT processing in try/catch
+                            // AudioVisualizer callback runs on audio thread — any uncaught
+                            // exception here crashes silently and spams logcat
+                            try {
+                                if (fft.size < 2) return
+                                val bars = FloatArray(barCount)
+                                val halfSize   = fft.size / 2
+                                val bucketSize = (halfSize / barCount).coerceAtLeast(1)
+                                for (i in 0 until barCount) {
+                                    var sum = 0f
+                                    val start = (i * bucketSize + 1).coerceAtMost(halfSize - 1)
+                                    val end   = ((i + 1) * bucketSize + 1).coerceAtMost(halfSize)
+                                    for (j in start until end) {
+                                        val ri   = j * 2
+                                        val ii   = j * 2 + 1
+                                        val real = if (ri < fft.size) fft[ri].toFloat() else 0f
+                                        val imag = if (ii < fft.size) fft[ii].toFloat() else 0f
+                                        sum += kotlin.math.sqrt(real * real + imag * imag)
+                                    }
+                                    val count = (end - start).coerceAtLeast(1)
+                                    bars[i] = (sum / (count * 128f)).coerceIn(0f, 1f)
                                 }
-                                // Normalize to 0..1, with some boost for visibility
-                                bars[i] = (sum / (bucketSize * 128f)).coerceIn(0f, 1f)
-                            }
-                            magnitudes.value = bars
+                                magnitudes.value = bars
+                            } catch (_: Exception) { /* never spam logcat */ }
                         }
                     },
                     16000, // 16kHz capture rate

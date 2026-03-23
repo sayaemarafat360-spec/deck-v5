@@ -10,16 +10,20 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
-import android.widget.Toast
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,13 +47,8 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        // Only scan if storage permission was granted
-        val storageGranted = results.entries.any { (perm, granted) ->
-            granted && (perm.contains("READ_MEDIA") || perm.contains("READ_EXTERNAL"))
-        }
-        if (storageGranted || results.values.any { it }) {
-            try { vm.scanMedia() } catch (_: Exception) {}
-        }
+        val granted = results.values.any { it }
+        if (granted) try { vm.scanMedia() } catch (_: Exception) {}
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,84 +72,52 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ── Folder drill-down state ───────────────────────────────────────────────
 data class FolderContent(
     val name: String,
-    val songs: List<com.sayaem.nebula.data.models.Song>,
-    val videos: List<com.sayaem.nebula.data.models.Song>
+    val songs: List<Song>,
+    val videos: List<Song>,
 )
 
 @Composable
-fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () -> Unit = {}) {
-    val isDark       by vm.isDark.collectAsStateWithLifecycle()
-    val songs        by vm.songs.collectAsStateWithLifecycle()
-    val videos       by vm.videos.collectAsStateWithLifecycle()
-    val playback     by vm.playback.collectAsStateWithLifecycle()
-    val query        by vm.searchQuery.collectAsStateWithLifecycle()
-    val results      by vm.searchResults.collectAsStateWithLifecycle()
-    val favorites    by vm.favoriteSongs.collectAsStateWithLifecycle()
-    val playlists    by vm.playlists.collectAsStateWithLifecycle()
-    val folders      by vm.folders.collectAsStateWithLifecycle()
-    val recentSongs  by vm.recentSongs.collectAsStateWithLifecycle()
-    val topSongs     by vm.topSongs.collectAsStateWithLifecycle()
-    val totalMin     by vm.totalMinutes.collectAsStateWithLifecycle()
-    val listeningStats    by vm.listeningStats.collectAsStateWithLifecycle()
-    val recentlyAdded     by vm.recentlyAdded.collectAsStateWithLifecycle()
-    val audioSessionId    by vm.audioSessionId.collectAsStateWithLifecycle()
-    var dynamicAccentColor by remember { mutableStateOf<androidx.compose.ui.graphics.Color?>(null) }
-    val useDynamicColor    by vm.store.let { remember { mutableStateOf(it.prefs.getBoolean("dynamic_color", false)) } }
+fun DeckRoot(
+    vm: MainViewModel,
+    backendVm: BackendViewModel,
+    onGoogleSignIn: () -> Unit = {},
+) {
+    val isDark          by vm.isDark.collectAsStateWithLifecycle()
+    val songs           by vm.songs.collectAsStateWithLifecycle()
+    val videos          by vm.videos.collectAsStateWithLifecycle()
+    val playback        by vm.playback.collectAsStateWithLifecycle()
+    val favorites       by vm.favoriteSongs.collectAsStateWithLifecycle()
+    val playlists       by vm.playlists.collectAsStateWithLifecycle()
+    val recentSongs     by vm.recentSongs.collectAsStateWithLifecycle()
+    val recentlyAdded   by vm.recentlyAdded.collectAsStateWithLifecycle()
+    val audioSessionId  by vm.audioSessionId.collectAsStateWithLifecycle()
+    val eqState         by vm.eqState.collectAsStateWithLifecycle()
+    val sleepTimer      by vm.sleepTimer.collectAsStateWithLifecycle()
+    val speed           by vm.playbackSpeed.collectAsStateWithLifecycle()
 
-    // Backend state
-    val backendUser    by backendVm.user.collectAsStateWithLifecycle()
-    val isPremium      by backendVm.isPremium.collectAsStateWithLifecycle()
-    val prices         by backendVm.prices.collectAsStateWithLifecycle()
-    val backendMsg     by backendVm.message.collectAsStateWithLifecycle()
-    val isSyncing      by backendVm.isSyncing.collectAsStateWithLifecycle()
-    val eqState      by vm.eqState.collectAsStateWithLifecycle()
-    val sleepTimer   by vm.sleepTimer.collectAsStateWithLifecycle()
-    val speed        by vm.playbackSpeed.collectAsStateWithLifecycle()
+    val backendUser  by backendVm.user.collectAsStateWithLifecycle()
+    val isPremium    by backendVm.isPremium.collectAsStateWithLifecycle()
+    val prices       by backendVm.prices.collectAsStateWithLifecycle()
+    val backendMsg   by backendVm.message.collectAsStateWithLifecycle()
 
-    // ── Navigation state ──────────────────────────────────────────────
-    // Real back stack — stores navigation history
-    val tabBackStack = remember { mutableStateListOf<Screen>(Screen.Home) }
-    val currentTab by remember { androidx.compose.runtime.derivedStateOf { tabBackStack.last() } }
-    val navigateTo = { screen: Screen ->
-        if (tabBackStack.last() != screen) tabBackStack.add(screen)
-    }
+    // ── Nav state ─────────────────────────────────────────────────────
+    var currentTab    by remember { mutableStateOf<Screen>(Screen.Home) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var showEqualizer  by remember { mutableStateOf(false) }
     var showSleepTimer by remember { mutableStateOf(false) }
     var showSpeed      by remember { mutableStateOf(false) }
+    var showSearch     by remember { mutableStateOf(false) }
     var videoSong      by remember { mutableStateOf<Song?>(null) }
-    var showSplash    by remember { mutableStateOf(true) }
-    var showOnboarding by remember { mutableStateOf<Boolean>(!vm.store.isOnboardingDone()) }
+    var showSplash     by remember { mutableStateOf(true) }
+    var showOnboarding by remember { mutableStateOf(!vm.store.isOnboardingDone()) }
+    var openFolder     by remember { mutableStateOf<FolderContent?>(null) }
+    var optionsSong    by remember { mutableStateOf<Song?>(null) }
+    var optionsVideo   by remember { mutableStateOf<Song?>(null) }
+    var editingTagSong by remember { mutableStateOf<Song?>(null) }
 
-    // Pull cloud data once on startup if signed in
-    LaunchedEffect(backendUser) {
-        if (backendUser != null) {
-            backendVm.pullAndMerge(
-                onFavorites = { cloudFavs: Set<Long> ->
-                    vm.store.prefs.edit()
-                        .putStringSet("fav_synced", cloudFavs.map { id -> id.toString() }.toSet()).apply()
-                },
-                onPlaylists = { cloudPlaylists: List<com.sayaem.nebula.data.models.Playlist> ->
-                    if (cloudPlaylists.size > vm.store.getPlaylists().size) {
-                        vm.store.savePlaylists(cloudPlaylists)
-                        vm.playlists  // trigger recompose via ViewModel
-                    }
-                }
-            )
-        }
-    }
-    var editingTagSong  by remember { mutableStateOf<com.sayaem.nebula.data.models.Song?>(null) }
-    var drivingMode     by remember { mutableStateOf(false) }
-    var optionsSong     by remember { mutableStateOf<com.sayaem.nebula.data.models.Song?>(null) }
-    // Folder drill-down state
-    var openFolder by remember { mutableStateOf<FolderContent?>(null) }
-    var optionsVideo    by remember { mutableStateOf<com.sayaem.nebula.data.models.Song?>(null) }
-
-    // BackHandlers moved inside DeckTheme Box below
-
-    // Show backend messages (sign-in result, premium granted, etc.)
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(backendMsg) {
         backendMsg?.let {
@@ -159,32 +126,38 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
         }
     }
 
-    DeckTheme(darkTheme = isDark) {
-        Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+    LaunchedEffect(backendUser) {
+        if (backendUser != null) {
+            backendVm.pullAndMerge(
+                onFavorites = { cloudFavs ->
+                    vm.store.prefs.edit().putStringSet("fav_synced", cloudFavs.map { it.toString() }.toSet()).apply()
+                },
+                onPlaylists = { cloudPlaylists ->
+                    if (cloudPlaylists.size > vm.store.getPlaylists().size) {
+                        vm.store.savePlaylists(cloudPlaylists)
+                    }
+                }
+            )
+        }
+    }
 
-            // ── Back button handlers — MUST be inside composition tree ──
-            // Order: most specific first, base handler last
-            if (drivingMode)          BackHandler { drivingMode = false }
-            if (optionsSong != null)  BackHandler { optionsSong = null }
+    DeckTheme(darkTheme = isDark) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+
+            // Back handlers
+            if (optionsSong != null)   BackHandler { optionsSong = null }
             if (optionsVideo != null)  BackHandler { optionsVideo = null }
             if (editingTagSong != null) BackHandler { editingTagSong = null }
-            if (showSpeed)            BackHandler { showSpeed = false }
-            if (showSleepTimer)       BackHandler { showSleepTimer = false }
-            if (showEqualizer)        BackHandler { showEqualizer = false }
-            if (showNowPlaying)       BackHandler { showNowPlaying = false }
-            if (videoSong != null)    BackHandler {
-                videoSong = null
-                // Restore music playback if it was interrupted by video
-            }
-            // Base handler: prevents accidental exit — minimizes instead
-            // Back nav: non-Home tab → go to Home. Home tab → swallow (prevent exit)
-            BackHandler(enabled = tabBackStack.size > 1) { tabBackStack.removeLastOrNull() }
-            BackHandler(enabled = tabBackStack.size <= 1) { /* on Home root — swallow to prevent exit */ }
+            if (showSearch)            BackHandler { showSearch = false }
+            if (showSpeed)             BackHandler { showSpeed = false }
+            if (showSleepTimer)        BackHandler { showSleepTimer = false }
+            if (showEqualizer)         BackHandler { showEqualizer = false }
+            if (showNowPlaying)        BackHandler { showNowPlaying = false }
+            if (videoSong != null)     BackHandler { videoSong = null }
+            if (openFolder != null)    BackHandler { openFolder = null }
+            BackHandler(enabled = currentTab != Screen.Home) { currentTab = Screen.Home }
+            BackHandler(enabled = currentTab == Screen.Home) { /* swallow */ }
 
-            // ── Splash / Onboarding / Main — mutually exclusive screens ─
-            // NOTE: Do NOT use return@Box or return@DeckTheme here — early
-            // returns inside a composable lambda corrupt Compose's slot table
-            // and cause ArrayIndexOutOfBoundsException on startup.
             if (showSplash) {
                 DeckSplashScreen(onFinished = { showSplash = false })
             } else if (showOnboarding) {
@@ -193,284 +166,268 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                     showOnboarding = false
                 })
             } else {
-            // ── Main scaffold ─────────────────────────────────────────
-            Scaffold(
-                containerColor = Color.Transparent,
-                bottomBar = {
-                    Column {
-                        AnimatedVisibility(
-                            visible = playback.currentSong != null && videoSong == null,
-                            enter   = slideInVertically { it } + fadeIn(),
-                            exit    = slideOutVertically { it } + fadeOut()
-                        ) {
-                            MiniPlayer(
-                                state        = playback,
-                                onTogglePlay = { vm.player.togglePlay() },
-                                onNext       = { vm.player.next() },
-                                onExpand     = { showNowPlaying = true }
+
+                // ── Main scaffold ──────────────────────────────────────
+                Scaffold(
+                    containerColor = Color.Transparent,
+                    bottomBar = {
+                        Column {
+                            AnimatedVisibility(
+                                visible = playback.currentSong != null && videoSong == null,
+                                enter   = slideInVertically { it } + fadeIn(),
+                                exit    = slideOutVertically { it } + fadeOut()
+                            ) {
+                                MiniPlayer(
+                                    state        = playback,
+                                    onTogglePlay = { vm.player.togglePlay() },
+                                    onNext       = { vm.player.next() },
+                                    onExpand     = { showNowPlaying = true }
+                                )
+                            }
+                            if (videoSong == null) {
+                                DeckBottomNav(currentTab) { tab -> currentTab = tab }
+                            }
+                        }
+                    }
+                ) { padding ->
+                    Box(Modifier.padding(padding)) {
+                        when (currentTab) {
+                            Screen.Home -> HomeScreen(
+                                songs         = songs,
+                                videos        = videos,
+                                recentSongs   = recentSongs,
+                                recentlyAdded = recentlyAdded,
+                                playbackState = playback,
+                                onSongClick   = { vm.playSong(it); showNowPlaying = true },
+                                onVideoClick  = { videoSong = it },
+                                onMoreSong    = { optionsSong = it },
+                                onMoreVideo   = { optionsVideo = it },
+                                onResumeClick = { showNowPlaying = true },
+                                onSearchClick = { showSearch = true },
+                                onRefresh     = { vm.scanMedia() },
+                                isPremium     = isPremium,
+                            )
+                            Screen.Videos -> VideosScreen(
+                                videos        = videos,
+                                onVideoClick  = { videoSong = it },
+                                onMoreClick   = { optionsVideo = it },
+                                onSearchClick = { showSearch = true },
+                                onRefresh     = { vm.scanMedia() },
+                            )
+                            Screen.Music -> MusicScreen(
+                                songs              = songs,
+                                currentSong        = playback.currentSong,
+                                isPlaying          = playback.isPlaying,
+                                favorites          = favorites,
+                                playlists          = playlists,
+                                onSongClick        = { vm.playSong(it); showNowPlaying = true },
+                                onMoreClick        = { optionsSong = it },
+                                onPlayNext         = { vm.playNext(it) },
+                                onAddToQueue       = { vm.addToQueue(it) },
+                                onPlayPlaylist     = { vm.playPlaylist(it); showNowPlaying = true },
+                                onCreatePlaylist   = { vm.createPlaylist(it) },
+                                onDeletePlaylist   = { vm.deletePlaylist(it) },
+                                onRenamePlaylist   = { id, n -> vm.renamePlaylist(id, n) },
+                                onAddSongToPlaylist = { pid, sid -> vm.addSongToPlaylist(pid, sid) },
+                                onRemoveSongFromPlaylist = { pid, sid -> vm.removeSongFromPlaylist(pid, sid) },
+                                onSearchClick      = { showSearch = true },
+                            )
+                            Screen.More -> MoreScreen(
+                                isDark              = isDark,
+                                currentUser         = backendUser,
+                                isPremium           = isPremium,
+                                onSignIn            = onGoogleSignIn,
+                                onSignOut           = { backendVm.signOut() },
+                                onToggleTheme       = vm::toggleTheme,
+                                onEqualizerClick    = { showEqualizer = true },
+                                onPremiumClick      = { currentTab = Screen.Premium },
+                                onStatsClick        = { currentTab = Screen.Stats },
+                                onSleepTimerClick   = { showSleepTimer = true },
+                                onRescan            = { vm.scanMedia() },
+                                onGaplessChanged    = { vm.setGapless(it) },
+                                onSmartSkipChanged  = { vm.setSmartSkipEnabled(it) },
+                                onCrossfadeChanged  = { vm.setCrossfade(it) },
+                                onVolumeNormChanged = { vm.setVolumeNorm(it) },
+                                initialGapless      = vm.store.getGapless(),
+                                initialSmartSkip    = vm.store.getSmartSkip(),
+                                initialCrossfade    = vm.store.getCrossfade(),
+                                initialVolumeNorm   = vm.store.prefs.getBoolean("vol_norm", false),
+                            )
+                            Screen.Premium -> PremiumScreen(
+                                onBack     = { currentTab = Screen.Home },
+                                isPremium  = isPremium,
+                                premiumPlan = backendVm.premiumPlan.collectAsStateWithLifecycle().value,
+                                prices     = prices,
+                                onPurchase = { plan -> backendVm.grantPremium(plan) },
+                            )
+                            Screen.Stats -> StatsScreen(
+                                songs = songs,
+                                stats = vm.listeningStats.collectAsStateWithLifecycle().value,
+                                topSongs = vm.topSongs.collectAsStateWithLifecycle().value,
+                                totalMinutes = vm.totalMinutes.collectAsStateWithLifecycle().value,
+                                onBack = { currentTab = Screen.Home }
+                            )
+                            else -> HomeScreen(
+                                songs = songs, videos = videos, recentSongs = recentSongs,
+                                recentlyAdded = recentlyAdded, playbackState = playback,
+                                onSongClick = { vm.playSong(it) }, onVideoClick = {},
+                                onMoreSong = {}, onMoreVideo = {}, onResumeClick = {},
+                                onSearchClick = { showSearch = true }, onRefresh = { vm.scanMedia() },
+                                isPremium = isPremium,
                             )
                         }
-                        if (videoSong == null) {
-                            DeckBottomNav(currentTab) { screen -> if (currentTab != screen) navigateTo(screen) }
-                        }
                     }
                 }
-            ) { padding ->
-                Box(Modifier.padding(padding)) {
-                    when (currentTab) {
-                        Screen.Home -> HomeScreen(
-                            songs       = songs,
-                            videos      = videos,
-                            recentSongs = recentSongs,
-                            onSongClick  = { vm.playSong(it); showNowPlaying = true },
-                            onEditTag    = { editingTagSong = it },
-                            onMoreClick      = { optionsSong = it },
-                            onMoreVideoClick  = { optionsVideo = it },
-                            isPremium        = isPremium,
-                            recentlyAdded = recentlyAdded,
-                            onVideoClick   = { song -> videoSong = song },
-                            onPremiumClick = { navigateTo(Screen.Premium) },
-                            onStatsClick   = { navigateTo(Screen.Stats) },
-                            // Fix #5 — wire see-all navigation
-                            onSeeAllSongs  = { navigateTo(Screen.Library) },
-                            onSeeAllVideos = { navigateTo(Screen.Library) },
-                            // Fix #2 — pull to refresh triggers media scan
-                            onRefresh      = { vm.scanMedia() },
-                            onFolderClick  = { name, folderSongs, folderVideos ->
-                                openFolder = FolderContent(name, folderSongs, folderVideos)
-                            },
-                        )
-                        Screen.Library -> LibraryScreen(
-                            songs    = songs, videos = videos,
-                            currentSong = playback.currentSong,
-                            isPlaying   = playback.isPlaying,
-                            onMoreClick      = { optionsSong = it },
-                            onMoreVideoClick = { optionsVideo = it },
-                            onPlayNext       = { vm.playNext(it) },
-                            onAddToQueue     = { vm.addToQueue(it) },
-                            favorites   = favorites,
-                            playlists   = playlists,
-                            folders     = folders,
-                            onSongClick  = { vm.playSong(it); showNowPlaying = true },
-                            onVideoClick = { song -> videoSong = song },
-                            onPlayPlaylist          = { vm.playPlaylist(it); showNowPlaying = true },
-                            onCreatePlaylist        = { vm.createPlaylist(it) },
-                            onDeletePlaylist        = { vm.deletePlaylist(it) },
-                            onRenamePlaylist        = { id, name -> vm.renamePlaylist(id, name) },
-                            onAddSongToPlaylist     = { pid, sid -> vm.addSongToPlaylist(pid, sid) },
-                            onRemoveSongFromPlaylist = { pid, sid -> vm.removeSongFromPlaylist(pid, sid) },
-                            onReorderPlaylist        = { pid, ids -> vm.store.reorderPlaylist(pid, ids); vm.refreshPlaylists() },
-                        )
-                        Screen.Search -> SearchScreen(
-                            query = query, onQueryChange = vm::setQuery,
-                            results = results, currentSong = playback.currentSong,
-                            isPlaying = playback.isPlaying,
-                            onSongClick = { vm.playSong(it); showNowPlaying = true }
-                        )
-                        Screen.Settings -> SettingsScreen(
-                            currentUser         = backendUser,
-                            isPremium           = isPremium,
-                            onSignIn            = onGoogleSignIn,
-                            onSignOut           = { backendVm.signOut() },
-                            isDark              = isDark,
-                            onToggleTheme       = vm::toggleTheme,
-                            onEqualizerClick    = { showEqualizer = true },
-                            onPremiumClick      = { navigateTo(Screen.Premium) },
-                            onStatsClick        = { navigateTo(Screen.Stats) },
-                            onSleepTimerClick   = { showSleepTimer = true },
-                            onRescan            = { vm.scanMedia() },
-                            onDrivingMode       = { drivingMode = true },
-                            initialGapless      = vm.store.getGapless(),
-                            initialSmartSkip    = vm.store.getSmartSkip(),
-                            initialCrossfade    = vm.store.getCrossfade(),
-                            initialVolumeNorm   = vm.store.prefs.getBoolean("vol_norm", false),
-                            onGaplessChanged    = { vm.setGapless(it) },
-                            onSmartSkipChanged  = { vm.setSmartSkipEnabled(it) },
-                            onVolumeNormChanged = { vm.setVolumeNorm(it) },
-                            onCrossfadeChanged  = { vm.setCrossfade(it) },
-                            onDynColorChanged   = { vm.store.prefs.edit().putBoolean("dynamic_color", it).apply() },
-                        )
-                        Screen.Premium -> PremiumScreen(
-                            onBack       = { navigateTo(Screen.Home) },
-                            isPremium    = isPremium,
-                            premiumPlan  = backendVm.premiumPlan.collectAsStateWithLifecycle().value,
-                            prices       = prices,
-                            onPurchase   = { plan -> backendVm.grantPremium(plan) },
-                        )
-                        Screen.Stats   -> StatsScreen(
-                            songs = songs, stats = listeningStats,
-                            topSongs = topSongs, totalMinutes = totalMin,
-                            onBack = { navigateTo(Screen.Home) }
-                        )
-                        else -> HomeScreen(
-                            songs = songs, videos = videos, recentSongs = recentSongs,
-                            onSongClick = { vm.playSong(it) }, onVideoClick = {},
-                            onPremiumClick = {}, onStatsClick = {},
-                            onSeeAllSongs = { navigateTo(Screen.Library) },
-                            onSeeAllVideos = { navigateTo(Screen.Library) },
+
+                // ── Search overlay ────────────────────────────────────
+                AnimatedVisibility(visible = showSearch,
+                    enter = fadeIn(tween(180)) + slideInVertically { -40 },
+                    exit  = fadeOut(tween(150)) + slideOutVertically { -40 }) {
+                    SearchOverlay(
+                        songs         = songs,
+                        videos        = videos,
+                        onSongClick   = { vm.playSong(it); showNowPlaying = true; showSearch = false },
+                        onVideoClick  = { videoSong = it; showSearch = false },
+                        onDismiss     = { showSearch = false }
+                    )
+                }
+
+                // ── Now Playing ───────────────────────────────────────
+                AnimatedVisibility(visible = showNowPlaying,
+                    enter = slideInVertically { it }, exit = slideOutVertically { it }) {
+                    NowPlayingScreen(
+                        state            = playback,
+                        currentSpeed     = speed,
+                        sleepTimerState  = sleepTimer,
+                        isFavorite       = playback.currentSong?.let { vm.isFavorite(it.id) } ?: false,
+                        onTogglePlay     = { vm.player.togglePlay() },
+                        onNext           = { vm.player.next() },
+                        onPrev           = { vm.player.previous() },
+                        onSeek           = { vm.player.seekToFraction(it) },
+                        onToggleShuffle  = { vm.player.toggleShuffle() },
+                        onCycleRepeat    = { vm.player.cycleRepeat() },
+                        onClose          = { showNowPlaying = false },
+                        onEqualizerClick = { showEqualizer = true },
+                        onSleepTimer     = { showSleepTimer = true },
+                        onSpeedClick     = { showSpeed = true },
+                        onShare          = { vm.shareSong(it) },
+                        onToggleFavorite = { vm.toggleFavorite(it) },
+                        onQueueSeekTo    = { vm.player.seekToIndex(it) },
+                        onAddBookmark    = { vm.addBookmark() },
+                        onSeekToBookmark = { vm.seekToBookmark(it) },
+                        onDeleteBookmark = { vm.deleteBookmark(it) },
+                        onEditTag        = { editingTagSong = it },
+                        audioSessionId   = audioSessionId,
+                    )
+                }
+
+                // ── Equalizer ─────────────────────────────────────────
+                AnimatedVisibility(visible = showEqualizer,
+                    enter = slideInVertically { it }, exit = slideOutVertically { it }) {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        EqualizerScreen(
+                            eqState         = eqState,
+                            onBandChanged   = { band, value -> vm.setEqBand(band, value) },
+                            onPresetChanged = { vm.applyEqPreset(it) },
+                            onToggleEq      = { vm.toggleEq() },
+                            onBack              = { showEqualizer = false },
+                            onSaveForSong       = { vm.saveEqForCurrentSong() },
+                            currentSongTitle    = playback.currentSong?.title,
                         )
                     }
                 }
-            }
 
-            // ── Now Playing ───────────────────────────────────────────
-            AnimatedVisibility(visible = showNowPlaying,
-                enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-                NowPlayingScreen(
-                    state            = playback,
-                    currentSpeed     = speed,
-                    sleepTimerState  = sleepTimer,
-                    isFavorite       = playback.currentSong?.let { vm.isFavorite(it.id) } ?: false,
-                    onTogglePlay     = { vm.player.togglePlay() },
-                    onNext           = { vm.player.next() },
-                    onPrev           = { vm.player.previous() },
-                    onSeek           = { vm.player.seekToFraction(it) },
-                    onToggleShuffle  = { vm.player.toggleShuffle() },
-                    onCycleRepeat    = { vm.player.cycleRepeat() },
-                    onClose          = { showNowPlaying = false },
-                    onEqualizerClick = { showEqualizer = true },
-                    onSleepTimer     = { showSleepTimer = true },
-                    onSpeedClick     = { showSpeed = true },
-                    onShare          = { vm.shareSong(it) },
-                    onToggleFavorite  = { vm.toggleFavorite(it) },
-                    onEditTag         = { editingTagSong = it },
-                    onQueueSeekTo        = { vm.player.seekToIndex(it) },
-                    onAddBookmark        = { vm.addBookmark() },
-                    onSeekToBookmark     = { vm.seekToBookmark(it) },
-                    onDeleteBookmark     = { vm.deleteBookmark(it) },
-                    audioSessionId    = audioSessionId,
-                )
-            }
+                // ── Sleep Timer ───────────────────────────────────────
+                if (showSleepTimer) {
+                    SleepTimerSheet(state = sleepTimer, onStart = { vm.startSleepTimer(it) },
+                        onCancel = { vm.cancelSleepTimer() }, onDismiss = { showSleepTimer = false })
+                }
 
-            // ── Equalizer ─────────────────────────────────────────────
-            AnimatedVisibility(visible = showEqualizer,
-                enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-                Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
-                    EqualizerScreen(
-                        eqState         = eqState,
-                        onBandChanged   = { band, value -> vm.setEqBand(band, value) },
-                        onPresetChanged = { vm.applyEqPreset(it) },
-                        onToggleEq      = { vm.toggleEq() },
-                        onBack              = { showEqualizer = false },
-                    onSaveForSong       = { vm.saveEqForCurrentSong() },
-                    currentSongTitle    = playback.currentSong?.title,
+                // ── Speed ─────────────────────────────────────────────
+                if (showSpeed) {
+                    SpeedPickerSheet(current = speed, onSelect = { vm.setSpeed(it) },
+                        onDismiss = { showSpeed = false })
+                }
+
+                // ── Song Options (audio) ──────────────────────────────
+                optionsSong?.let { song ->
+                    val favs by vm.favorites.collectAsStateWithLifecycle()
+                    SongOptionsSheet(
+                        song = song, isFavorite = song.id in favs, playlists = playlists,
+                        onDismiss = { optionsSong = null },
+                        onPlayNow = { vm.playSong(song); showNowPlaying = true },
+                        onPlayNext = { vm.playNext(song) },
+                        onAddToQueue = { vm.addToQueue(song) },
+                        onAddToPlaylist = { pid -> vm.addSongToPlaylist(pid, song.id) },
+                        onCreateAndAddPlaylist = { name -> vm.createPlaylistAndAddSong(name, song) },
+                        onToggleFavorite = { vm.toggleFavorite(song) },
+                        onEditTags = { editingTagSong = song; optionsSong = null },
+                        onShare = { vm.shareSong(song) },
+                        onDelete = { vm.deleteSong(song) {} },
                     )
                 }
-            }
 
-            // ── Sleep Timer ───────────────────────────────────────────
-            if (showSleepTimer) {
-                SleepTimerSheet(
-                    state     = sleepTimer,
-                    onStart   = { vm.startSleepTimer(it) },
-                    onCancel  = { vm.cancelSleepTimer() },
-                    onDismiss = { showSleepTimer = false }
-                )
-            }
-
-            // ── Speed ─────────────────────────────────────────────────
-            if (showSpeed) {
-                SpeedPickerSheet(
-                    current   = speed,
-                    onSelect  = { vm.setSpeed(it) },
-                    onDismiss = { showSpeed = false }
-                )
-            }
-
-            // ── Song Options Sheet (3-dot) ────────────────────────────
-            optionsSong?.let { song ->
-                val favs by vm.favorites.collectAsStateWithLifecycle()
-                SongOptionsSheet(
-                    song                   = song,
-                    isFavorite             = song.id in favs,
-                    playlists              = playlists,
-                    onDismiss              = { optionsSong = null },
-                    onPlayNow              = { vm.playSong(song); showNowPlaying = true },
-                    onPlayNext             = { vm.playNext(song) },
-                    onAddToQueue           = { vm.addToQueue(song) },
-                    onAddToPlaylist        = { pid -> vm.addSongToPlaylist(pid, song.id) },
-                    onCreateAndAddPlaylist = { name -> vm.createPlaylistAndAddSong(name, song) },
-                    onToggleFavorite       = { vm.toggleFavorite(song) },
-                    onEditTags             = { editingTagSong = song; optionsSong = null },
-                    onShare                = { vm.shareSong(song) },
-                    onDelete               = { vm.deleteSong(song) {} },
-                )
-            }
-
-            // ── Folder content overlay ───────────────────────────────
-            openFolder?.let { folder ->
-                androidx.activity.compose.BackHandler { openFolder = null }
-                Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
-                    com.sayaem.nebula.ui.screens.FolderContentScreen(
-                        folderName   = folder.name,
-                        songs        = folder.songs,
-                        videos       = folder.videos,
-                        onSongClick  = { vm.playSong(it); showNowPlaying = true; openFolder = null },
-                        onVideoClick = { videoSong = it; openFolder = null },
-                        onMoreSong   = { optionsSong = it },
-                        onMoreVideo  = { optionsVideo = it },
-                        onBack       = { openFolder = null }
+                // ── Video Options ─────────────────────────────────────
+                optionsVideo?.let { video ->
+                    VideoOptionsSheet(
+                        video = video, onDismiss = { optionsVideo = null },
+                        onPlayNow = { videoSong = video; optionsVideo = null },
+                        onShare = { vm.shareSong(video); optionsVideo = null },
+                        onDelete = { vm.deleteSong(video) {}; optionsVideo = null },
                     )
                 }
-            }
 
-            // ── Video Options Sheet (3-dot on video) ─────────────────
-            optionsVideo?.let { video ->
-                VideoOptionsSheet(
-                    video      = video,
-                    onDismiss  = { optionsVideo = null },
-                    onPlayNow  = { videoSong = video; optionsVideo = null },
-                    onShare    = { vm.shareSong(video); optionsVideo = null },
-                    onDelete   = { vm.deleteSong(video) {}; optionsVideo = null },
-                )
-            }
-
-            // ── Driving Mode ─────────────────────────────────────────
-            if (drivingMode) {
-                DrivingModeScreen(
-                    state         = playback,
-                    onTogglePlay  = { vm.player.togglePlay() },
-                    onNext        = { vm.player.next() },
-                    onPrev        = { vm.player.previous() },
-                    onExit        = { drivingMode = false },
-                )
-            }
-
-            // ── Tag Editor ───────────────────────────────────────────
-            editingTagSong?.let { song ->
-                TagEditorScreen(
-                    song   = song,
-                    onSave = { t, ar, al ->
-                        vm.updateTags(song, t, ar, al) { editingTagSong = null }
-                    },
-                    onBack = { editingTagSong = null }
-                )
-            }
-
-            // ── Video Player ──────────────────────────────────────────
-            AnimatedVisibility(visible = videoSong != null,
-                enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
-                videoSong?.let { song ->
-                    VideoPlayerScreen(
-                        video         = song,
-                        player        = vm.player.playerOrNull,
-                        onPauseMusic  = { if (vm.playback.value.isPlaying) vm.player.togglePlay() },
-                        onBack        = { videoSong = null }
+                // ── Tag Editor ────────────────────────────────────────
+                editingTagSong?.let { song ->
+                    TagEditorScreen(
+                        song   = song,
+                        onSave = { t, ar, al -> vm.updateTags(song, t, ar, al) { editingTagSong = null } },
+                        onBack = { editingTagSong = null }
                     )
                 }
-            }
-            } // end else (main content — not splash, not onboarding)
+
+                // ── Folder content ────────────────────────────────────
+                openFolder?.let { folder ->
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        FolderContentScreen(
+                            folderName   = folder.name,
+                            songs        = folder.songs,
+                            videos       = folder.videos,
+                            onSongClick  = { vm.playSong(it); showNowPlaying = true; openFolder = null },
+                            onVideoClick = { videoSong = it; openFolder = null },
+                            onMoreSong   = { optionsSong = it },
+                            onMoreVideo  = { optionsVideo = it },
+                            onBack       = { openFolder = null }
+                        )
+                    }
+                }
+
+                // ── Video Player ──────────────────────────────────────
+                AnimatedVisibility(visible = videoSong != null,
+                    enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
+                    videoSong?.let { song ->
+                        VideoPlayerScreen(
+                            video        = song,
+                            player       = vm.player.playerOrNull,
+                            onPauseMusic = { if (vm.playback.value.isPlaying) vm.player.togglePlay() },
+                            onBack       = { videoSong = null }
+                        )
+                    }
+                }
+
+            } // end main content
         }
     }
 }
 
+// ── Bottom nav — Playit style ─────────────────────────────────────────────
 @Composable
 fun DeckBottomNav(current: Screen, onNavigate: (Screen) -> Unit) {
     val tabs = listOf(
-        Triple(Screen.Home,     Icons.Filled.Home,         "Home"),
-        Triple(Screen.Library,  Icons.Filled.VideoLibrary, "Library"),
-        Triple(Screen.Search,   Icons.Filled.Search,       "Search"),
-        Triple(Screen.Settings, Icons.Filled.Settings,     "Settings"),
+        Triple(Screen.Home,   Icons.Filled.Home,         "Home"),
+        Triple(Screen.Videos, Icons.Filled.VideoLibrary, "Videos"),
+        Triple(Screen.Music,  Icons.Filled.MusicNote,    "Music"),
+        Triple(Screen.More,   Icons.Filled.Menu,         "More"),
     )
     NavigationBar(containerColor = DarkBgSecondary, tonalElevation = 0.dp) {
         tabs.forEach { (screen, icon, label) ->
@@ -487,6 +444,139 @@ fun DeckBottomNav(current: Screen, onNavigate: (Screen) -> Unit) {
                     indicatorColor      = NebulaViolet.copy(alpha = 0.15f),
                 )
             )
+        }
+    }
+}
+
+// ── Search overlay — floats over any tab ──────────────────────────────────
+@Composable
+fun SearchOverlay(
+    songs: List<Song>,
+    videos: List<Song>,
+    onSongClick: (Song) -> Unit,
+    onVideoClick: (Song) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val appColors = LocalAppColors.current
+    var query by remember { mutableStateOf("") }
+    val allMedia = remember(songs, videos) { songs + videos }
+    val results  = remember(query, allMedia) {
+        if (query.isBlank()) emptyList()
+        else {
+            val q = query.lowercase()
+            allMedia.filter {
+                it.title.lowercase().contains(q) ||
+                it.artist.lowercase().contains(q) ||
+                it.album.lowercase().contains(q)
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.7f)).clickable(onClick = onDismiss)) {
+        Column(
+            Modifier.fillMaxWidth()
+                .clickable(enabled = false) {}
+                .background(appColors.bg)
+                .statusBarsPadding()
+        ) {
+            // Search bar
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                        .background(appColors.card)
+                        .border(0.5.dp, appColors.border, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Search, null, tint = appColors.textTertiary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    BasicTextField(
+                        value = query, onValueChange = { query = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = appColors.textPrimary),
+                        decorationBox = { inner ->
+                            if (query.isEmpty()) Text("Search songs, videos, artists…",
+                                style = MaterialTheme.typography.bodyMedium, color = appColors.textTertiary)
+                            inner()
+                        }
+                    )
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Filled.Close, null, tint = appColors.textTertiary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = NebulaViolet, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+
+            HorizontalDivider(color = appColors.borderSubtle, thickness = 0.5.dp)
+
+            // Results
+            if (query.isBlank()) {
+                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.Search, null, tint = appColors.textTertiary,
+                            modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("Type to search your library", style = MaterialTheme.typography.bodyMedium,
+                            color = appColors.textTertiary)
+                    }
+                }
+            } else if (results.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                    Text("No results for \"$query\"", style = MaterialTheme.typography.bodyMedium,
+                        color = appColors.textTertiary)
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 500.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(results.size) { i ->
+                        val item = results[i]
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                if (item.isVideo) onVideoClick(item) else onSongClick(item)
+                            }.padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (item.isVideo) NebulaRed.copy(0.15f) else NebulaViolet.copy(0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    if (item.isVideo) Icons.Filled.VideoFile else Icons.Filled.MusicNote,
+                                    null,
+                                    tint = if (item.isVideo) NebulaRed else NebulaViolet,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item.title, style = MaterialTheme.typography.bodyMedium,
+                                    color = appColors.textPrimary, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (item.isVideo) item.sizeFormatted else item.artist,
+                                    style = MaterialTheme.typography.bodySmall, color = appColors.textTertiary
+                                )
+                            }
+                            Text(item.durationFormatted, style = MaterialTheme.typography.labelSmall,
+                                color = appColors.textTertiary)
+                        }
+                        HorizontalDivider(Modifier.padding(start = 72.dp), color = appColors.borderSubtle, thickness = 0.5.dp)
+                    }
+                }
+            }
         }
     }
 }

@@ -267,12 +267,14 @@ fun VideoOptionsSheet(
 // Displayed everywhere audio art is shown — consistent, never blank
 // ═══════════════════════════════════════════════════════════════════════════
 @Composable
-fun MusicArtBox(song: Song, size: Dp, modifier: Modifier = Modifier) {
+fun MusicArtBox(song: Song, size: Dp = 0.dp, modifier: Modifier = Modifier) {
     val colors = listOf(NebulaViolet, NebulaPink, NebulaCyan, NebulaAmber, NebulaGreen)
     val color  = colors[(song.id % colors.size).toInt().let { if (it < 0) -it else it }]
-    val radius = size * 0.25f
+    // When size == 0.dp, the modifier is expected to define the dimensions (e.g. fillMaxWidth)
+    val radius = if (size > 0.dp) size * 0.25f else 14.dp
+    val sizeModifier = if (size > 0.dp) modifier.size(size) else modifier
     Box(
-        modifier.size(size).clip(RoundedCornerShape(radius))
+        sizeModifier.clip(RoundedCornerShape(radius))
             .background(
                 androidx.compose.ui.graphics.Brush.linearGradient(
                     listOf(color.copy(0.35f), color.copy(0.12f))

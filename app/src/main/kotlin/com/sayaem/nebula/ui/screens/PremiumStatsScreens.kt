@@ -38,13 +38,11 @@ fun PremiumScreen(
         Triple("Lifetime", "\$${prices.lifetime}", "one-time · = ${prices.lifetimeYears} yrs yearly"),
     )
     val features = listOf(
-        Triple("Pro 10-Band Equalizer",   Icons.Filled.Equalizer,    NebulaCyan),
-        Triple("All Premium Themes",      Icons.Filled.Palette,      NebulaPink),
-        Triple("Zero Ads — Forever",      Icons.Filled.Block,        NebulaGreen),
-        Triple("Advanced Stats & Wrapped",Icons.Filled.BarChart,     NebulaViolet),
-        Triple("Smart AI Skip",           Icons.Filled.Psychology,   NebulaPink),
-        Triple("Spatial Audio & Reverb",  Icons.Filled.Speaker,      NebulaCyan),
-        Triple("Cloud Playlist Backup",   Icons.Filled.CloudUpload,  NebulaAmber),
+        // Only real, implemented features
+        Triple("Zero Ads — Forever",         Icons.Filled.Block,        NebulaGreen),
+        Triple("Cloud Sync (Playlists + Favs)", Icons.Filled.CloudUpload, NebulaViolet),
+        Triple("Per-Song EQ Profiles",       Icons.Filled.Equalizer,    NebulaCyan),
+        Triple("Stats & Listening History",  Icons.Filled.BarChart,     NebulaAmber),
     )
 
     Column(Modifier.fillMaxSize().background(LocalAppColors.current.bg).verticalScroll(rememberScrollState())) {
