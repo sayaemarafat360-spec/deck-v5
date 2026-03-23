@@ -61,8 +61,12 @@ class DeckPlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
-        if (player?.playWhenReady == false || player?.mediaItemCount == 0) stopSelf()
+        // Fix #6: Stop playback AND kill the service when the user swipes the app away.
+        // The original code only stopped if already paused — music kept playing after swipe.
+        val player = mediaSession?.player ?: run { stopSelf(); return }
+        player.stop()
+        player.clearMediaItems()
+        stopSelf()
     }
 
     override fun onDestroy() {

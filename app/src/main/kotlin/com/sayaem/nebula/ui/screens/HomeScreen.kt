@@ -69,6 +69,7 @@ fun HomeScreen(
     onSeeAllSongs: () -> Unit = {},
     onSeeAllVideos: () -> Unit = {},
     onRefresh: (() -> Unit)? = null,
+    onFolderClick: ((String, List<Song>, List<Song>) -> Unit)? = null, // Fix #3
 ) {
     val hour     = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     val greeting = when (hour) { in 0..11 -> "Good morning"; in 12..16 -> "Good afternoon"; else -> "Good evening" }
@@ -152,7 +153,7 @@ fun HomeScreen(
             when (selectedTab) {
                 TAB_VIDEOS  -> VideosTab(videos, onVideoClick, onMoreVideoClick, onSeeAllVideos, isPremium)
                 TAB_MUSIC   -> MusicTab(songs, recentSongs, recentlyAdded, onSongClick, onMoreClick, onSeeAllSongs, isPremium)
-                TAB_FOLDERS -> FoldersTab(songs, videos, onSongClick, onVideoClick)
+                TAB_FOLDERS -> FoldersTab(songs, videos, onSongClick, onVideoClick, onFolderClick)
             }
 
             // Fix #3 — PullToRefreshContainer only visible when progress > 0 or refreshing
@@ -296,13 +297,14 @@ private fun MusicTab(
     }
 }
 
-// ── TAB 3: FOLDERS — grouped by folder path ───────────────────────────────
+// ── TAB 3: FOLDERS — drill-down: tap folder → see its contents ──────────────
 @Composable
 private fun FoldersTab(
     songs: List<Song>,
     videos: List<Song>,
     onSongClick: (Song) -> Unit,
     onVideoClick: (Song) -> Unit,
+    onFolderClick: ((String, List<Song>, List<Song>) -> Unit)? = null,
 ) {
     val allMedia = remember(songs, videos) { songs + videos }
     val folderMap = remember(allMedia) {
@@ -334,9 +336,11 @@ private fun FoldersTab(
                 videoCount = items.count { it.isVideo },
                 sampleItem = items.firstOrNull(),
                 onClick    = {
-                    // Play first song in folder
-                    items.firstOrNull { !it.isVideo }?.let { onSongClick(it) }
-                        ?: items.firstOrNull { it.isVideo }?.let { onVideoClick(it) }
+                    // Fix #3: Show folder contents, don't play immediately
+                    val folderSongs  = items.filter { !it.isVideo }
+                    val folderVideos = items.filter { it.isVideo }
+                    onFolderClick?.invoke(folderName, folderSongs, folderVideos)
+                        ?: folderSongs.firstOrNull()?.let { onSongClick(it) }  // fallback
                 }
             )
         }

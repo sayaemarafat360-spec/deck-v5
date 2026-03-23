@@ -26,6 +26,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import com.sayaem.nebula.data.models.PlaybackState
+import com.sayaem.nebula.data.models.Song
+import com.sayaem.nebula.ui.screens.MusicArtBox
 import com.sayaem.nebula.ui.theme.*
 import com.sayaem.nebula.ui.theme.LocalAppColors
 
@@ -102,9 +104,15 @@ fun SongTile(
                     contentAlignment = Alignment.Center) {
                     PlayingIndicator(color = Color.White)
                 }
-            } else if (albumArtUri == null) {
-                Icon(Icons.Filled.MusicNote, contentDescription = null,
-                    tint = accentColor, modifier = Modifier.size(22.dp))
+            } else {
+                // Fix #5: Static music placeholder — gradient bg + note icon
+                Box(Modifier.fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(accentColor.copy(0.35f), accentColor.copy(0.1f))
+                    )), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.MusicNote, contentDescription = null,
+                        tint = accentColor.copy(0.8f), modifier = Modifier.size(22.dp))
+                }
             }
         }
         Spacer(Modifier.width(14.dp))

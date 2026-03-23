@@ -73,6 +73,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+data class FolderContent(
+    val name: String,
+    val songs: List<com.sayaem.nebula.data.models.Song>,
+    val videos: List<com.sayaem.nebula.data.models.Song>
+)
+
 @Composable
 fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () -> Unit = {}) {
     val isDark       by vm.isDark.collectAsStateWithLifecycle()
@@ -138,6 +144,9 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
     var editingTagSong  by remember { mutableStateOf<com.sayaem.nebula.data.models.Song?>(null) }
     var drivingMode     by remember { mutableStateOf(false) }
     var optionsSong     by remember { mutableStateOf<com.sayaem.nebula.data.models.Song?>(null) }
+    // Folder drill-down state
+    var openFolder by remember { mutableStateOf<FolderContent?>(null) }
+    var optionsVideo    by remember { mutableStateOf<com.sayaem.nebula.data.models.Song?>(null) }
 
     // BackHandlers moved inside DeckTheme Box below
 
@@ -157,6 +166,7 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
             // Order: most specific first, base handler last
             if (drivingMode)          BackHandler { drivingMode = false }
             if (optionsSong != null)  BackHandler { optionsSong = null }
+            if (optionsVideo != null)  BackHandler { optionsVideo = null }
             if (editingTagSong != null) BackHandler { editingTagSong = null }
             if (showSpeed)            BackHandler { showSpeed = false }
             if (showSleepTimer)       BackHandler { showSleepTimer = false }
@@ -215,7 +225,7 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                             onSongClick  = { vm.playSong(it); showNowPlaying = true },
                             onEditTag    = { editingTagSong = it },
                             onMoreClick      = { optionsSong = it },
-                            onMoreVideoClick  = { optionsSong = it },
+                            onMoreVideoClick  = { optionsVideo = it },
                             isPremium        = isPremium,
                             recentlyAdded = recentlyAdded,
                             onVideoClick   = { song -> videoSong = song },
@@ -226,13 +236,16 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                             onSeeAllVideos = { navigateTo(Screen.Library) },
                             // Fix #2 — pull to refresh triggers media scan
                             onRefresh      = { vm.scanMedia() },
+                            onFolderClick  = { name, folderSongs, folderVideos ->
+                                openFolder = FolderContent(name, folderSongs, folderVideos)
+                            },
                         )
                         Screen.Library -> LibraryScreen(
                             songs    = songs, videos = videos,
                             currentSong = playback.currentSong,
                             isPlaying   = playback.isPlaying,
                             onMoreClick      = { optionsSong = it },
-                            onMoreVideoClick = { optionsSong = it },
+                            onMoreVideoClick = { optionsVideo = it },
                             onPlayNext       = { vm.playNext(it) },
                             onAddToQueue     = { vm.addToQueue(it) },
                             favorites   = favorites,
@@ -381,6 +394,34 @@ fun DeckRoot(vm: MainViewModel, backendVm: BackendViewModel, onGoogleSignIn: () 
                     onEditTags             = { editingTagSong = song; optionsSong = null },
                     onShare                = { vm.shareSong(song) },
                     onDelete               = { vm.deleteSong(song) {} },
+                )
+            }
+
+            // ── Folder content overlay ───────────────────────────────
+            openFolder?.let { folder ->
+                androidx.activity.compose.BackHandler { openFolder = null }
+                Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+                    com.sayaem.nebula.ui.screens.FolderContentScreen(
+                        folderName   = folder.name,
+                        songs        = folder.songs,
+                        videos       = folder.videos,
+                        onSongClick  = { vm.playSong(it); showNowPlaying = true; openFolder = null },
+                        onVideoClick = { videoSong = it; openFolder = null },
+                        onMoreSong   = { optionsSong = it },
+                        onMoreVideo  = { optionsVideo = it },
+                        onBack       = { openFolder = null }
+                    )
+                }
+            }
+
+            // ── Video Options Sheet (3-dot on video) ─────────────────
+            optionsVideo?.let { video ->
+                VideoOptionsSheet(
+                    video      = video,
+                    onDismiss  = { optionsVideo = null },
+                    onPlayNow  = { videoSong = video; optionsVideo = null },
+                    onShare    = { vm.shareSong(video); optionsVideo = null },
+                    onDelete   = { vm.deleteSong(video) {}; optionsVideo = null },
                 )
             }
 
