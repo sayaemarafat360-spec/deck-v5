@@ -15,7 +15,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-
 class PlayerController(private val context: Context) {
 
     private val _state = MutableStateFlow(PlaybackState())
@@ -23,28 +22,35 @@ class PlayerController(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var positionJob: Job? = null
+    private var crossfadeJob: Job? = null
     private var currentQueue: List<Song> = emptyList()
     private var _service: DeckPlaybackService? = null
 
-    // Safe accessor — throws if not ready (use isReady to check first)
-    val player: ExoPlayer get() = _service?.exoPlayer
+    // ── Two-player crossfade architecture ────────────────────────────
+    // playerA = primary (currently playing)
+    // playerB = secondary (fading in during crossfade)
+    private var playerA: ExoPlayer? = null  // bound from service
+    private var playerB: ExoPlayer? = null  // created locally for crossfade
+
+    val player: ExoPlayer get() = playerA
         ?: throw IllegalStateException("Service not bound yet")
+    val playerOrNull: ExoPlayer? get() = playerA
+    val isReady: Boolean get() = playerA != null
 
-    // Null-safe accessor for VideoPlayerScreen
-    val playerOrNull: ExoPlayer? get() = _service?.exoPlayer
-
-    val isReady: Boolean get() = _service?.exoPlayer != null
-
-    // Callback when audio session is ready for EQ
     var onAudioSessionReady: ((Int) -> Unit)? = null
+
+    // Settings
+    var crossfadeSeconds: Float = 0f
+    var fadeOnPause: Boolean = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             _service = (binder as? DeckPlaybackService.LocalBinder)?.getService()
-            _service?.exoPlayer?.addListener(playerListener)
+            playerA  = _service?.exoPlayer
+            playerA?.addListener(playerListener)
         }
         override fun onServiceDisconnected(name: ComponentName?) {
-            _service = null
+            _service = null; playerA = null
         }
     }
 
@@ -52,7 +58,7 @@ class PlayerController(private val context: Context) {
         override fun onPlaybackStateChanged(s: Int) {
             syncState()
             if (s == Player.STATE_READY) {
-                val sid = _service?.exoPlayer?.audioSessionId ?: 0
+                val sid = playerA?.audioSessionId ?: 0
                 if (sid != 0) onAudioSessionReady?.invoke(sid)
             }
         }
@@ -62,9 +68,9 @@ class PlayerController(private val context: Context) {
         }
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
             syncState()
-            // Real crossfade: duck out old track, fade in new one
-            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && crossfadeSeconds > 0) {
-                scope.launch { applyCrossfade() }
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && crossfadeSeconds > 0f) {
+                // Auto-transition means ExoPlayer moved to next track — fade was handled
+                // in position-based crossfade trigger. Nothing extra needed here.
             }
         }
         override fun onShuffleModeEnabledChanged(e: Boolean) { syncState() }
@@ -72,7 +78,6 @@ class PlayerController(private val context: Context) {
     }
 
     init {
-        // Start + bind to service
         val intent = Intent(context, DeckPlaybackService::class.java).apply {
             action = DeckPlaybackService.ACTION_BIND
         }
@@ -81,8 +86,11 @@ class PlayerController(private val context: Context) {
     }
 
     fun playQueue(songs: List<Song>, startIndex: Int = 0) {
-        val p = _service?.exoPlayer ?: return
+        val p = playerA ?: return
+        crossfadeJob?.cancel()
+        releasePlayerB()
         currentQueue = songs
+        p.volume = 1f
         p.clearMediaItems()
         p.addMediaItems(songs.map { MediaItem.fromUri(it.uri) })
         p.seekToDefaultPosition(startIndex)
@@ -91,18 +99,64 @@ class PlayerController(private val context: Context) {
         startPositionUpdates()
     }
 
-    fun togglePlay()            { _service?.exoPlayer?.let { if (it.isPlaying) it.pause() else it.play() } }
-    fun next()                  { _service?.exoPlayer?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() } }
-    fun previous()              { _service?.exoPlayer?.let { if (it.currentPosition > 3000) it.seekTo(0) else if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() } }
-    fun seekTo(ms: Long)        { _service?.exoPlayer?.seekTo(ms) }
-    fun seekToFraction(f: Float){ _service?.exoPlayer?.let { it.seekTo((it.duration * f).toLong().coerceAtLeast(0)) } }
-    fun seekToIndex(idx: Int)   { _service?.exoPlayer?.seekTo(idx, 0) }
-    fun setSpeed(s: Float)      { _service?.exoPlayer?.setPlaybackSpeed(s) }
-    fun setVolume(v: Float)     { _service?.exoPlayer?.let { it.volume = v.coerceIn(0f, 1f) } }
-    fun toggleShuffle()         { _service?.exoPlayer?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
+    // ── Playback controls ────────────────────────────────────────────
+    fun togglePlay() {
+        val p = playerA ?: return
+        if (p.isPlaying) {
+            if (fadeOnPause) {
+                scope.launch {
+                    // Fade out over 300ms then pause
+                    val steps = 15
+                    repeat(steps) { i ->
+                        p.volume = 1f - (i + 1).toFloat() / steps
+                        delay(20)
+                    }
+                    p.pause()
+                    p.volume = 1f  // reset so resume sounds normal
+                }
+            } else {
+                p.pause()
+            }
+        } else {
+            p.play()
+            if (fadeOnPause) {
+                scope.launch {
+                    // Fade in over 300ms after resume
+                    p.volume = 0f
+                    val steps = 15
+                    repeat(steps) { i ->
+                        p.volume = (i + 1).toFloat() / steps
+                        delay(20)
+                    }
+                    p.volume = 1f
+                }
+            }
+        }
+    }
+
+    fun next() {
+        val p = playerA ?: return
+        crossfadeJob?.cancel()
+        releasePlayerB()
+        p.volume = 1f
+        if (p.hasNextMediaItem()) p.seekToNextMediaItem()
+    }
+
+    fun previous() {
+        val p = playerA ?: return
+        if (p.currentPosition > 3000) p.seekTo(0)
+        else if (p.hasPreviousMediaItem()) p.seekToPreviousMediaItem()
+    }
+
+    fun seekTo(ms: Long)          { playerA?.seekTo(ms) }
+    fun seekToFraction(f: Float)  { playerA?.let { it.seekTo((it.duration * f).toLong().coerceAtLeast(0)) } }
+    fun seekToIndex(idx: Int)     { playerA?.seekTo(idx, 0) }
+    fun setSpeed(s: Float)        { playerA?.setPlaybackSpeed(s) }
+    fun setVolume(v: Float)       { playerA?.volume = v.coerceIn(0f, 1f) }
+    fun toggleShuffle()           { playerA?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
 
     fun cycleRepeat() {
-        _service?.exoPlayer?.let {
+        playerA?.let {
             it.repeatMode = when (it.repeatMode) {
                 Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                 Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
@@ -111,27 +165,10 @@ class PlayerController(private val context: Context) {
         }
     }
 
-    // Crossfade duration in seconds (0 = disabled)
-    var crossfadeSeconds: Float = 0f
-
-    private suspend fun applyCrossfade() {
-        val p = _service?.exoPlayer ?: return
-        val steps = 20
-        val stepMs = (crossfadeSeconds * 1000 / steps).toLong().coerceAtLeast(50L)
-        // Fade in from 0 to 1 over the crossfade duration
-        for (i in 0..steps) {
-            val vol = i.toFloat() / steps
-            p.volume = vol
-            delay(stepMs)
-        }
-        p.volume = 1f
-    }
-
     fun getQueue(): List<Song> = currentQueue
 
-    // Play song immediately next in queue
     fun playNext(song: Song) {
-        val p   = _service?.exoPlayer ?: return
+        val p = playerA ?: return
         val idx = p.currentMediaItemIndex + 1
         currentQueue = currentQueue.toMutableList().also {
             it.add(idx.coerceAtMost(it.size), song)
@@ -140,22 +177,92 @@ class PlayerController(private val context: Context) {
         syncState()
     }
 
-    // Append song to end of queue — if nothing is playing, start it immediately
     fun addToQueue(song: Song) {
-        val p = _service?.exoPlayer ?: return
-        if (currentQueue.isEmpty()) {
-            // Nothing loaded yet — just start playing
-            playQueue(listOf(song), 0)
-            return
-        }
+        val p = playerA ?: return
+        if (currentQueue.isEmpty()) { playQueue(listOf(song), 0); return }
         currentQueue = currentQueue + song
         p.addMediaItem(MediaItem.fromUri(song.uri))
         syncState()
     }
 
+    // ── Real crossfade ─────────────────────────────────────────────
+    // Called from position update loop when approaching track end.
+    // playerA fades 1→0 while playerB fades 0→1. When playerB reaches
+    // full volume, playerA is released and playerB becomes playerA.
+    private fun startCrossfade() {
+        val pA    = playerA ?: return
+        val idx   = pA.currentMediaItemIndex
+        val nextIdx = idx + 1
+        val nextSong = currentQueue.getOrNull(nextIdx) ?: return
+
+        crossfadeJob?.cancel()
+        crossfadeJob = scope.launch {
+            // Build playerB on main thread
+            val pB = ExoPlayer.Builder(context).build()
+            playerB = pB
+            pB.volume = 0f
+            pB.setMediaItem(MediaItem.fromUri(nextSong.uri))
+            pB.prepare()
+            pB.play()
+
+            val totalMs  = (crossfadeSeconds * 1000).toLong()
+            val stepMs   = 50L
+            val steps    = (totalMs / stepMs).toInt().coerceAtLeast(1)
+
+            // Simultaneous fade: A out, B in
+            for (i in 0..steps) {
+                val t = i.toFloat() / steps
+                pA.volume = 1f - t   // A: 1 → 0
+                pB.volume = t         // B: 0 → 1
+                delay(stepMs)
+            }
+
+            // Swap: pB becomes primary
+            pA.pause()
+            pA.volume = 1f
+            playerA = pB
+            playerB = null
+            playerA?.addListener(playerListener)
+            currentQueue = currentQueue.drop(nextIdx) + currentQueue.take(nextIdx)
+            syncState()
+            startPositionUpdates()
+            pA.removeListener(playerListener)
+            pA.release()
+        }
+    }
+
+    private fun releasePlayerB() {
+        playerB?.release()
+        playerB = null
+    }
+
+    // ── Position updates + crossfade trigger ─────────────────────────
+    private fun startPositionUpdates() {
+        positionJob?.cancel()
+        positionJob = scope.launch {
+            while (true) {
+                delay(300)
+                val p = playerA ?: break
+                if (!p.isPlaying) break
+                val pos = p.currentPosition.coerceAtLeast(0)
+                val dur = p.duration.coerceAtLeast(0)
+                _state.value = _state.value.copy(position = pos, duration = dur, isPlaying = true)
+
+                // Trigger crossfade when within crossfadeSeconds of track end
+                if (crossfadeSeconds > 0f && dur > 0 && crossfadeJob == null &&
+                    (dur - pos) < (crossfadeSeconds * 1000).toLong() &&
+                    p.hasNextMediaItem()) {
+                    startCrossfade()
+                }
+            }
+        }
+    }
+
+    private fun stopPositionUpdates() { positionJob?.cancel() }
+
     private fun syncState() {
-        val p = _service?.exoPlayer ?: return
-        val idx  = p.currentMediaItemIndex.coerceAtLeast(0)
+        val p   = playerA ?: return
+        val idx = p.currentMediaItemIndex.coerceAtLeast(0)
         val song = currentQueue.getOrNull(idx)
         val repeat = when (p.repeatMode) {
             Player.REPEAT_MODE_ONE -> RepeatMode.ONE
@@ -174,26 +281,10 @@ class PlayerController(private val context: Context) {
         )
     }
 
-    private fun startPositionUpdates() {
-        positionJob?.cancel()
-        positionJob = scope.launch {
-            while (true) {
-                delay(500)
-                val p = _service?.exoPlayer ?: break
-                if (!p.isPlaying) break
-                _state.value = _state.value.copy(
-                    position  = p.currentPosition.coerceAtLeast(0),
-                    duration  = p.duration.coerceAtLeast(0),
-                    isPlaying = p.isPlaying,
-                )
-            }
-        }
-    }
-
-    private fun stopPositionUpdates() { positionJob?.cancel() }
-
     fun release() {
         positionJob?.cancel()
+        crossfadeJob?.cancel()
+        releasePlayerB()
         scope.cancel()
         try { context.unbindService(serviceConnection) } catch (_: Exception) {}
     }

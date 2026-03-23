@@ -21,13 +21,17 @@ class MediaRepository(private val context: Context) {
     private val _isScanning = MutableStateFlow(false)
     val isScanning: Flow<Boolean> = _isScanning.asStateFlow()
 
+    val scanProgress = MutableStateFlow<Int?>(null)
+
     suspend fun scanMedia() = withContext(Dispatchers.IO) {
         _isScanning.value = true
+        scanProgress.value = 0
         try {
             _songs.value  = queryAudio()
             _videos.value = queryVideo()
         } finally {
             _isScanning.value = false
+            scanProgress.value = null
         }
     }
 

@@ -59,8 +59,9 @@
         <!-- Media control receiver for notification buttons -->
         <receiver
             android:name=".player.MediaReceiver"
-            android:exported="false">
-            <intent-filter>
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
                 <action android:name="com.sayaem.nebula.PLAY_PAUSE" />
                 <action android:name="com.sayaem.nebula.NEXT" />
                 <action android:name="com.sayaem.nebula.PREV" />

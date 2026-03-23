@@ -34,6 +34,7 @@ fun VideosScreen(
     onMoreClick: (Song) -> Unit,
     onSearchClick: () -> Unit,
     onRefresh: () -> Unit,
+    onFolderClick: ((String, List<Song>) -> Unit)? = null,
 ) {
     val appColors = LocalAppColors.current
 
@@ -133,7 +134,11 @@ fun VideosScreen(
                 if (groupByFolder && folderGroups.isNotEmpty()) {
                     folderGroups.forEach { (folder, folderVideos) ->
                         item(key = "header_$folder") {
-                            FolderHeaderChip(folder, folderVideos.size)
+                            FolderHeaderChip(
+                                name    = folder,
+                                count   = folderVideos.size,
+                                onClick = { onFolderClick?.invoke(folder, folderVideos) }
+                            )
                         }
                         items(folderVideos, key = { "v_${it.id}" }) { video ->
                             VideoFeedCard(video, { onVideoClick(video) }, { onMoreClick(video) })
@@ -156,18 +161,25 @@ fun VideosScreen(
 
 // ── Folder group header chip ──────────────────────────────────────────────
 @Composable
-private fun FolderHeaderChip(name: String, count: Int) {
+private fun FolderHeaderChip(name: String, count: Int, onClick: () -> Unit = {}) {
+    val appColors = LocalAppColors.current
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(NebulaViolet.copy(0.07f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(5.dp).clip(CircleShape).background(NebulaViolet))
+        Icon(Icons.Filled.FolderOpen, null, tint = NebulaViolet, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
         Text(name, style = MaterialTheme.typography.labelLarge,
-            color = LocalAppColors.current.textSecondary, fontWeight = FontWeight.SemiBold,
+            color = appColors.textPrimary, fontWeight = FontWeight.SemiBold,
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(8.dp))
-        Text("$count", style = MaterialTheme.typography.labelSmall, color = LocalAppColors.current.textTertiary)
+        Text("$count videos", style = MaterialTheme.typography.labelSmall, color = appColors.textTertiary)
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.ChevronRight, null, tint = appColors.textTertiary, modifier = Modifier.size(16.dp))
     }
 }
 

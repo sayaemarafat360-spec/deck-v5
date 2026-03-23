@@ -29,6 +29,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val songs      = repo.songs.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val videos     = repo.videos.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val isScanning = repo.isScanning.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val scanProgress: StateFlow<Int?> get() = repo.scanProgress
     val playback   = player.state
 
     private val _searchQuery = MutableStateFlow("")
@@ -63,6 +64,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _volumeNormEnabled = MutableStateFlow(store.prefs.getBoolean("vol_norm", false))
     val volumeNormEnabled = _volumeNormEnabled.asStateFlow()
     private var currentAudioSessionId = 0
+    private var _state_was_playing = false
 
     // Fix 4: Read settings from prefs on init
     private val _smartSkipEnabled = MutableStateFlow(store.getSmartSkip())
@@ -96,8 +98,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .mapNotNull { (id, s) -> map[id]?.let { it to s.playCount } }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val totalMinutes: StateFlow<Int> = _playStats.map { stats ->
-        (stats.values.sumOf { it.playCount } * 3.5).toInt()
+    val totalMinutes: StateFlow<Int> = _playStats.map { _ ->
+        // Real tracked playtime — not an estimate
+        (store.getTotalPlaytimeMs() / 60_000L).toInt()
     }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     val listeningStats: StateFlow<List<Pair<Song, Long>>> = combine(songs, _playStats) { allSongs, stats ->
@@ -113,6 +116,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         loadRecentlyAdded()
         // Apply persisted settings to player
         player.crossfadeSeconds = store.getCrossfade()
+        player.fadeOnPause = store.prefs.getBoolean("fade_on_pause", true)
 
         // Fix 2: Wire audio session callback from service
         player.onAudioSessionReady = { sessionId ->
@@ -127,19 +131,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             var prevId: Long? = null
             var prevPos = 0L; var prevDur = 0L
+            var songStartedAt = 0L  // wall time when this song started playing
             playback.collect { state ->
                 val curId = state.currentSong?.id
                 if (curId != null && curId != prevId) {
+                    // Record real playtime for the song that just ended
+                    if (prevId != null && songStartedAt > 0L) {
+                        val listenedMs = System.currentTimeMillis() - songStartedAt
+                        // Cap at song duration to avoid counting paused time
+                        val cappedMs = if (prevDur > 0) listenedMs.coerceAtMost(prevDur) else listenedMs
+                        store.recordPlaytime(prevId!!, cappedMs)
+                    }
                     prevId?.let { store.recordSkip(it, prevPos, prevDur) }
                     store.recordPlay(curId)
                     store.recordRecentPlay(curId)
+                    songStartedAt = System.currentTimeMillis()
                     _playStats.value = store.getPlayStats()
-                    // Fix 4: Only auto-skip if setting is enabled
+                    // Auto-apply per-song EQ profile
+                    store.loadEqProfile(curId)?.let { (bands, preset) ->
+                        _eqState.value = _eqState.value.copy(bands = bands.toMutableList(), preset = preset)
+                        bands.forEachIndexed { i, v -> setEqBand(i, v) }
+                    }
+                    // Smart skip: only if 70%+ skip rate AND at least 5 data points
                     if (_smartSkipEnabled.value && store.shouldAutoSkip(curId)) {
                         delay(1500)
                         if (playback.value.currentSong?.id == curId) player.next()
                     }
                 }
+                // Track pause time accurately — reset start time on pause/resume
+                if (prevId != null && prevId == curId) {
+                    if (state.isPlaying && !_state_was_playing) songStartedAt = System.currentTimeMillis()
+                    if (!state.isPlaying && _state_was_playing && songStartedAt > 0L) {
+                        val listenedMs = System.currentTimeMillis() - songStartedAt
+                        if (listenedMs > 2000L) store.recordPlaytime(curId!!, listenedMs)
+                        songStartedAt = 0L
+                    }
+                }
+                _state_was_playing = state.isPlaying
                 prevId = curId; prevPos = state.position; prevDur = state.duration
             }
         }
@@ -162,6 +190,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             bassBoost = BassBoost(0, sessionId).apply {
                 enabled = _eqState.value.enabled
                 setStrength((_eqState.value.bassBoost * 1000).toInt().coerceIn(0, 1000).toShort())
+            }
+            // Fix: actually instantiate LoudnessEnhancer with real audio session
+            loudnessEnhancer?.release()
+            loudnessEnhancer = android.media.audiofx.LoudnessEnhancer(sessionId).apply {
+                enabled = _volumeNormEnabled.value
+                setTargetGain(500)  // 5dB target gain, reasonable default
             }
         } catch (e: Exception) { e.printStackTrace() }
     }
@@ -230,6 +264,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { DeckBackend.pushFavorites(_favorites.value) }
     }
     fun isFavorite(id: Long) = id in _favorites.value
+    fun reloadFavorites() { _favorites.value = store.getFavorites() }
 
     // ── Playlists ─────────────────────────────────────────────────────
     fun refreshPlaylists()   { _playlists.value = store.getPlaylists() }
@@ -378,6 +413,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteEqForCurrentSong() {
         val song = playback.value.currentSong ?: return
         store.deleteEqProfile(song.id)
+    }
+
+    fun setFadeOnPause(enabled: Boolean) {
+        store.prefs.edit().putBoolean("fade_on_pause", enabled).apply()
+        player.fadeOnPause = enabled
     }
 
     fun setGapless(enabled: Boolean) {

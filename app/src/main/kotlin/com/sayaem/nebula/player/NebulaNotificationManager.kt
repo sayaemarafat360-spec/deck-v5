@@ -68,7 +68,10 @@ class DeckNotificationManager(private val context: Context) {
 
     fun showNowPlaying(song: Song, isPlaying: Boolean) {
         try {
-            val n = NotificationCompat.Builder(context, CHANNEL_PLAYBACK)
+            val prefs    = context.getSharedPreferences("deck_data", Context.MODE_PRIVATE)
+            val expanded = prefs.getBoolean("notif_expanded", true)
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_PLAYBACK)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(song.title)
                 .setContentText(song.artist)
@@ -76,17 +79,31 @@ class DeckNotificationManager(private val context: Context) {
                 .setContentIntent(launchIntent())
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2))
-                .addAction(android.R.drawable.ic_media_previous, "Previous", actionIntent(ACTION_PREV))
-                .addAction(
-                    if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-                    if (isPlaying) "Pause" else "Play",
-                    actionIntent(ACTION_PLAY_PAUSE)
-                )
-                .addAction(android.R.drawable.ic_media_next, "Next", actionIntent(ACTION_NEXT))
-                .build()
-            NotificationManagerCompat.from(context).notify(NOTIF_PLAYBACK_ID, n)
+
+            if (expanded) {
+                // Full media controls: prev + play/pause + next
+                builder
+                    .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
+                        .setShowActionsInCompactView(0, 1, 2))
+                    .addAction(android.R.drawable.ic_media_previous, "Previous", actionIntent(ACTION_PREV))
+                    .addAction(
+                        if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                        if (isPlaying) "Pause" else "Play",
+                        actionIntent(ACTION_PLAY_PAUSE)
+                    )
+                    .addAction(android.R.drawable.ic_media_next, "Next", actionIntent(ACTION_NEXT))
+            } else {
+                // Compact: play/pause only
+                builder
+                    .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
+                        .setShowActionsInCompactView(0))
+                    .addAction(
+                        if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                        if (isPlaying) "Pause" else "Play",
+                        actionIntent(ACTION_PLAY_PAUSE)
+                    )
+            }
+            NotificationManagerCompat.from(context).notify(NOTIF_PLAYBACK_ID, builder.build())
         } catch (_: Exception) {}
     }
 

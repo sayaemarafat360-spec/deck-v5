@@ -47,6 +47,7 @@ fun HomeScreen(
     onSearchClick: () -> Unit,
     onRefresh: () -> Unit,
     isPremium: Boolean,
+    isScanning: Boolean = false,
 ) {
     val appColors = LocalAppColors.current
     val hour      = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
@@ -91,6 +92,24 @@ fun HomeScreen(
             }
         }
 
+        // Scan progress banner
+        androidx.compose.animation.AnimatedVisibility(visible = isScanning) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(NebulaViolet.copy(0.12f))
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    modifier = Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)),
+                    color = NebulaViolet,
+                    trackColor = NebulaViolet.copy(0.2f)
+                )
+                Text("Scanning media…", style = MaterialTheme.typography.labelSmall,
+                    color = NebulaViolet)
+            }
+        }
         HorizontalDivider(color = appColors.borderSubtle, thickness = 0.5.dp)
 
         // ── Pull to refresh + scrollable body ─────────────────────────
@@ -132,17 +151,12 @@ fun HomeScreen(
                     item {
                         HomeSectionHeader("Recently Added", Icons.Filled.FiberNew, NebulaGreen)
                     }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(recentlyAdded.take(15), key = { it.id }) { song ->
-                                HomeAlbumCard(song, { onSongClick(song) }, { onMoreSong(song) })
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
+                    items(recentlyAdded.take(10), key = { "added_${it.id}" }) { song ->
+                        HomeRecentSongRow(song, { onSongClick(song) }, { onMoreSong(song) })
+                        HorizontalDivider(Modifier.padding(start = 82.dp),
+                            color = appColors.borderSubtle, thickness = 0.5.dp)
                     }
+                    item { Spacer(Modifier.height(4.dp)) }
                 }
 
                 // ── Recently Played ────────────────────────────────────
@@ -150,17 +164,12 @@ fun HomeScreen(
                     item {
                         HomeSectionHeader("Recently Played", Icons.Filled.History, NebulaViolet)
                     }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(recentSongs.take(15), key = { it.id }) { song ->
-                                HomeAlbumCard(song, { onSongClick(song) }, { onMoreSong(song) })
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
+                    items(recentSongs.take(10), key = { "recent_${it.id}" }) { song ->
+                        HomeRecentSongRow(song, { onSongClick(song) }, { onMoreSong(song) })
+                        HorizontalDivider(Modifier.padding(start = 82.dp),
+                            color = appColors.borderSubtle, thickness = 0.5.dp)
                     }
+                    item { Spacer(Modifier.height(4.dp)) }
                 }
 
                 // ── Recent Videos strip ────────────────────────────────
@@ -367,5 +376,35 @@ private fun HomeStatChip(
             color = appColors.textPrimary, fontWeight = FontWeight.Bold)
         Spacer(Modifier.width(3.dp))
         Text(label, style = MaterialTheme.typography.labelSmall, color = appColors.textTertiary)
+    }
+}
+
+
+// ── Vertical recent song row for Home ────────────────────────────────────
+@Composable
+private fun HomeRecentSongRow(song: Song, onClick: () -> Unit, onMoreClick: () -> Unit) {
+    val appColors = LocalAppColors.current
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MusicArtBox(song = song, size = 48.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(song.title, style = MaterialTheme.typography.bodyMedium,
+                color = appColors.textPrimary, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.artist, style = MaterialTheme.typography.bodySmall,
+                color = appColors.textTertiary, maxLines = 1)
+        }
+        Text(song.durationFormatted, style = MaterialTheme.typography.labelSmall,
+            color = appColors.textTertiary)
+        Spacer(Modifier.width(4.dp))
+        Box(Modifier.size(28.dp).clickable(onClick = onMoreClick),
+            contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.MoreVert, null, tint = appColors.textTertiary,
+                modifier = Modifier.size(16.dp))
+        }
     }
 }

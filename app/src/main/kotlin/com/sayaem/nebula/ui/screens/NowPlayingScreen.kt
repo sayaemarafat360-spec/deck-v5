@@ -262,9 +262,15 @@ fun NowPlayingScreen(
                 ExtraBtn(Icons.Filled.Speed,
                     "${currentSpeed}×",
                     onClick = onSpeedClick)
-                ExtraBtn(Icons.Filled.Lyrics,
-                    "Lyrics",
-                    onClick = { showLyrics = true })
+                // Only show Lyrics button if the pref is enabled
+                val context2 = androidx.compose.ui.platform.LocalContext.current
+                val showLyricsEnabled = remember {
+                    context2.getSharedPreferences("deck_data", android.content.Context.MODE_PRIVATE)
+                        .getBoolean("show_lyrics", true)
+                }
+                if (showLyricsEnabled) {
+                    ExtraBtn(Icons.Filled.Lyrics, "Lyrics", onClick = { showLyrics = true })
+                }
             }
         }
     }
@@ -435,10 +441,26 @@ fun WaveformSeekBar(
     songId: Long,
     modifier: Modifier = Modifier,
 ) {
-    // Generate pseudo-waveform bars seeded by songId so each song looks unique
-    val bars = remember(songId) {
-        val rng = java.util.Random(songId)
-        List(60) { 0.15f + rng.nextFloat() * 0.85f }
+    // Real waveform from audio decoding, with fallback to deterministic pseudo-random
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var bars by remember(songId) {
+        // Start with fallback immediately (no blocking), then replace with real data
+        val fallback = com.sayaem.nebula.data.repository.WaveformGenerator.generateFallback(60, songId)
+        mutableStateOf(fallback.toList())
+    }
+    LaunchedEffect(songId) {
+        if (songId == 0L) return@LaunchedEffect
+        try {
+            // Try to get cached waveform first (instant)
+            val cached = com.sayaem.nebula.data.repository.WaveformGenerator.getCached(context, songId, 60)
+            if (cached != null) { bars = cached.toList(); return@LaunchedEffect }
+            // Find the song URI from MediaStore and decode in background
+            val uri = android.net.Uri.withAppendedPath(
+                android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, songId.toString()
+            )
+            val real = com.sayaem.nebula.data.repository.WaveformGenerator.generate(context, uri, songId, 60)
+            bars = real.toList()
+        } catch (_: Exception) { /* keep fallback */ }
     }
 
     Column(modifier = modifier) {
@@ -475,7 +497,7 @@ fun WaveformSeekBar(
         ) {
             val appColors = LocalAppColors.current
             Canvas(Modifier.fillMaxSize()) {
-                val barW    = size.width / bars.size
+                val barW    = size.width / bars.size.coerceAtLeast(1)
                 val centerY = size.height / 2f
                 val maxH    = size.height * 0.9f
 

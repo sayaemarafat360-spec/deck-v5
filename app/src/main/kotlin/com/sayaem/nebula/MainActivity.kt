@@ -16,6 +16,9 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -101,6 +104,7 @@ fun DeckRoot(
     val backendUser  by backendVm.user.collectAsStateWithLifecycle()
     val isPremium    by backendVm.isPremium.collectAsStateWithLifecycle()
     val prices       by backendVm.prices.collectAsStateWithLifecycle()
+    val isScanning   by vm.isScanning.collectAsStateWithLifecycle()
     val backendMsg   by backendVm.message.collectAsStateWithLifecycle()
 
     // ── Nav state ─────────────────────────────────────────────────────
@@ -114,6 +118,7 @@ fun DeckRoot(
     var showSplash     by remember { mutableStateOf(true) }
     var showOnboarding by remember { mutableStateOf(!vm.store.isOnboardingDone()) }
     var openFolder     by remember { mutableStateOf<FolderContent?>(null) }
+    var openVideoFolder by remember { mutableStateOf<Pair<String, List<com.sayaem.nebula.data.models.Song>>?>(null) }
     var optionsSong    by remember { mutableStateOf<Song?>(null) }
     var optionsVideo   by remember { mutableStateOf<Song?>(null) }
     var editingTagSong by remember { mutableStateOf<Song?>(null) }
@@ -130,11 +135,17 @@ fun DeckRoot(
         if (backendUser != null) {
             backendVm.pullAndMerge(
                 onFavorites = { cloudFavs ->
-                    vm.store.prefs.edit().putStringSet("fav_synced", cloudFavs.map { it.toString() }.toSet()).apply()
+                    // Merge cloud favorites into local and refresh the StateFlow
+                    val local = vm.store.getFavorites()
+                    val merged = local + cloudFavs
+                    vm.store.saveFavorites(merged)
+                    vm.reloadFavorites()  // triggers UI update immediately
                 },
                 onPlaylists = { cloudPlaylists ->
+                    // Always use the larger set to avoid data loss from other devices
                     if (cloudPlaylists.size > vm.store.getPlaylists().size) {
                         vm.store.savePlaylists(cloudPlaylists)
+                        vm.refreshPlaylists()  // triggers UI update immediately
                     }
                 }
             )
@@ -155,6 +166,7 @@ fun DeckRoot(
             if (showNowPlaying)        BackHandler { showNowPlaying = false }
             if (videoSong != null)     BackHandler { videoSong = null }
             if (openFolder != null)    BackHandler { openFolder = null }
+            if (openVideoFolder != null) BackHandler { openVideoFolder = null }
             BackHandler(enabled = currentTab != Screen.Home) { currentTab = Screen.Home }
             BackHandler(enabled = currentTab == Screen.Home) { /* swallow */ }
 
@@ -206,13 +218,17 @@ fun DeckRoot(
                                 onSearchClick = { showSearch = true },
                                 onRefresh     = { vm.scanMedia() },
                                 isPremium     = isPremium,
+                                isScanning    = isScanning,
                             )
                             Screen.Videos -> VideosScreen(
                                 videos        = videos,
                                 onVideoClick  = { videoSong = it },
-                                onMoreClick   = { optionsVideo = it },
-                                onSearchClick = { showSearch = true },
-                                onRefresh     = { vm.scanMedia() },
+                                onMoreClick    = { optionsVideo = it },
+                                onSearchClick  = { showSearch = true },
+                                onRefresh      = { vm.scanMedia() },
+                                onFolderClick  = { name, folderVids ->
+                                    openVideoFolder = Pair(name, folderVids)
+                                },
                             )
                             Screen.Music -> MusicScreen(
                                 songs              = songs,
@@ -248,6 +264,7 @@ fun DeckRoot(
                                 onSmartSkipChanged  = { vm.setSmartSkipEnabled(it) },
                                 onCrossfadeChanged  = { vm.setCrossfade(it) },
                                 onVolumeNormChanged = { vm.setVolumeNorm(it) },
+                                onFadeOnPauseChanged = { vm.setFadeOnPause(it) },
                                 initialGapless      = vm.store.getGapless(),
                                 initialSmartSkip    = vm.store.getSmartSkip(),
                                 initialCrossfade    = vm.store.getCrossfade(),
@@ -457,8 +474,17 @@ fun SearchOverlay(
     onVideoClick: (Song) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val appColors = LocalAppColors.current
-    var query by remember { mutableStateOf("") }
+    val appColors     = LocalAppColors.current
+    var query         by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val keyboard      = LocalSoftwareKeyboardController.current
+
+    // Auto-focus search field and show keyboard when overlay opens
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(100)  // brief delay so composition is complete
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
     val allMedia = remember(songs, videos) { songs + videos }
     val results  = remember(query, allMedia) {
         if (query.isBlank()) emptyList()
@@ -495,7 +521,7 @@ fun SearchOverlay(
                     Spacer(Modifier.width(10.dp))
                     BasicTextField(
                         value = query, onValueChange = { query = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).focusRequester(focusRequester),
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = appColors.textPrimary),
                         decorationBox = { inner ->

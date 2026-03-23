@@ -73,6 +73,21 @@ class LocalDataStore(context: Context) {
         savePlayStats(stats)
     }
 
+    // Record actual milliseconds listened — used for real totalMinutes calculation
+    fun recordPlaytime(songId: Long, ms: Long) {
+        if (ms < 2000L) return  // ignore plays under 2 seconds
+        val key     = "playtime_ms"
+        val current = prefs.getLong("playtime_${songId}", 0L)
+        prefs.edit().putLong("playtime_${songId}", current + ms).apply()
+        // Also accumulate global total
+        val total = prefs.getLong(key, 0L)
+        prefs.edit().putLong(key, total + ms).apply()
+    }
+
+    fun getTotalPlaytimeMs(): Long = prefs.getLong("playtime_ms", 0L)
+
+    fun getSongPlaytimeMs(songId: Long): Long = prefs.getLong("playtime_${songId}", 0L)
+
     fun recordSkip(songId: Long, positionMs: Long, durationMs: Long) {
         if (durationMs == 0L) return
         val pct = positionMs.toFloat() / durationMs

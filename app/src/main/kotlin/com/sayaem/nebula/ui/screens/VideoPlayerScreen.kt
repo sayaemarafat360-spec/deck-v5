@@ -40,6 +40,7 @@ import androidx.media3.ui.PlayerView
 import com.sayaem.nebula.data.models.Song
 import com.sayaem.nebula.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -411,11 +412,22 @@ fun VideoPlayerScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (subtitleTracks.isNotEmpty()) {
                                     Box(Modifier.clip(RoundedCornerShape(6.dp)).background(NebulaCyan.copy(0.2f))
-                                        .clickable { subDelayMs -= 500 }.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                        .clickable {
+                                            subDelayMs -= 500
+                                            // Apply to ExoPlayer (parameter is in microseconds)
+                                            try {
+                                                videoPlayer.setSubtitleOffset(subDelayMs * 1000L)
+                                            } catch (_: Exception) {}
+                                        }.padding(horizontal = 8.dp, vertical = 2.dp)) {
                                         Text("Sub -0.5s", color = NebulaCyan, style = MaterialTheme.typography.labelSmall)
                                     }
                                     Box(Modifier.clip(RoundedCornerShape(6.dp)).background(NebulaCyan.copy(0.2f))
-                                        .clickable { subDelayMs += 500 }.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                        .clickable {
+                                            subDelayMs += 500
+                                            try {
+                                                videoPlayer.setSubtitleOffset(subDelayMs * 1000L)
+                                            } catch (_: Exception) {}
+                                        }.padding(horizontal = 8.dp, vertical = 2.dp)) {
                                         Text("Sub +0.5s", color = NebulaCyan, style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
@@ -509,21 +521,56 @@ fun VideoPlayerScreen(
 }
 
 // ── Feature 3: Screenshot from PlayerView surface ────────────────────────
-private suspend fun takeScreenshot(playerView: PlayerView?): String = withContext(Dispatchers.IO) {
-    try {
-        val pv = playerView ?: return@withContext "Screenshot failed"
-        val bmp = Bitmap.createBitmap(pv.width, pv.height, Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(bmp)
-        withContext(Dispatchers.Main) { pv.draw(canvas) }
-        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-        val folder = File(dir, "Deck Screenshots").also { it.mkdirs() }
-        val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val file = File(folder, "screenshot_$ts.jpg")
-        FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
-        bmp.recycle()
-        "Screenshot saved"
-    } catch (e: Exception) {
-        "Screenshot failed: ${e.message}"
+private suspend fun takeScreenshot(playerView: PlayerView?): String {
+    val pv = playerView ?: return "Screenshot failed"
+    if (pv.width == 0 || pv.height == 0) return "Screenshot failed: player not ready"
+
+    return suspendCancellableCoroutine { cont ->
+        try {
+            val bmp = Bitmap.createBitmap(pv.width, pv.height, Bitmap.Config.ARGB_8888)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                // PixelCopy works on SurfaceView — pv.draw() only captures View hierarchy (black for SurfaceView)
+                android.view.PixelCopy.request(
+                    (pv.context as? android.app.Activity)?.window ?: run {
+                        cont.resume("Screenshot failed: no window")
+                        return@suspendCancellableCoroutine
+                    },
+                    android.graphics.Rect(pv.left, pv.top, pv.right, pv.bottom),
+                    bmp,
+                    { result ->
+                        if (result == android.view.PixelCopy.SUCCESS) {
+                            try {
+                                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                                val folder = File(dir, "Deck Screenshots").also { it.mkdirs() }
+                                val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                val file = File(folder, "deck_$ts.jpg")
+                                FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                                // Notify gallery
+                                android.media.MediaScannerConnection.scanFile(
+                                    pv.context, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
+                                bmp.recycle()
+                                cont.resume("Screenshot saved to Gallery ✓")
+                            } catch (e: Exception) { cont.resume("Screenshot failed: ${e.message}") }
+                        } else {
+                            bmp.recycle()
+                            cont.resume("Screenshot failed (PixelCopy error $result)")
+                        }
+                    },
+                    android.os.Handler(android.os.Looper.getMainLooper())
+                )
+            } else {
+                // API < 26 fallback: draw the View hierarchy
+                val canvas = android.graphics.Canvas(bmp)
+                pv.draw(canvas)
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val folder = File(dir, "Deck Screenshots").also { it.mkdirs() }
+                val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                val file = File(folder, "deck_$ts.jpg")
+                FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                bmp.recycle()
+                cont.resume("Screenshot saved ✓")
+            }
+        } catch (e: Exception) { cont.resume("Screenshot failed: ${e.message}") }
     }
 }
 

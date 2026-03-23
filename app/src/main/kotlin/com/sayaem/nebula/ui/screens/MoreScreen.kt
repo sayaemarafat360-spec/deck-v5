@@ -36,6 +36,7 @@ fun MoreScreen(
     onSmartSkipChanged: (Boolean) -> Unit,
     onCrossfadeChanged: (Float) -> Unit,
     onVolumeNormChanged: (Boolean) -> Unit,
+    onFadeOnPauseChanged: (Boolean) -> Unit,
     initialGapless: Boolean,
     initialSmartSkip: Boolean,
     initialCrossfade: Float,
@@ -169,7 +170,9 @@ fun MoreScreen(
                 colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
         item { STile("Fade on Pause", Icons.Filled.VolumeDown, NebulaVioletLight, "Smooth audio transitions",
             trailing = { Switch(checked = fadeOnPause, onCheckedChange = {
-                fadeOnPause = it; prefs.edit().putBoolean("fade_on_pause", it).apply()
+                fadeOnPause = it
+                prefs.edit().putBoolean("fade_on_pause", it).apply()
+                onFadeOnPauseChanged(it)  // live-update player
             }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = NebulaViolet)) }) }
         item {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
