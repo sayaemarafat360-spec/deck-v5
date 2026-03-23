@@ -192,14 +192,6 @@ fun VideoPlayerScreen(
     }
     BackHandler { onBack() }
 
-    // Apply saved brightness immediately on open
-    LaunchedEffect(Unit) {
-        activity?.window?.attributes?.let {
-            it.screenBrightness = brightness.coerceIn(0.01f, 1f)
-            activity.window.attributes = it
-        }
-    }
-
     // ── Playback — all persistent preferences loaded from prefs ─────
     var isPlaying   by remember { mutableStateOf(true) }
     var isMuted     by remember { mutableStateOf(false) }
