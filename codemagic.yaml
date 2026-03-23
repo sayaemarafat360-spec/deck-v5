@@ -13,21 +13,54 @@ workflows:
         - $HOME/.gradle/wrapper
 
     scripts:
-      - name: Get Gradle wrapper jar and set fixed keystore
+      # ── Step 1: Bootstrap Gradle wrapper ──────────────────────────────
+      - name: Get Gradle wrapper jar
         script: |
           mkdir -p gradle/wrapper
           curl -fL \
             "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
             -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
-          # Use our bundled debug keystore so SHA-1 is always predictable
+
+      # ── Step 2: Install the repo keystore as the system debug keystore ─
+      # This guarantees the same SHA-1 fingerprint on every Codemagic build.
+      # The keystore at keystore/debug.keystore is committed to the repo.
+      - name: Install fixed debug keystore
+        script: |
           mkdir -p ~/.android
           cp keystore/debug.keystore ~/.android/debug.keystore
-          echo "=== Using fixed debug keystore SHA-1: ==="
-          keytool -list -v -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey -storepass android -keypass android 2>/dev/null \
-            | grep -E "SHA1|SHA256"
+          echo "Keystore installed at ~/.android/debug.keystore"
 
+      # ── Step 3: PRINT SHA-1 — copy this into Firebase Console ─────────
+      # Firebase Console → Project Settings → Your Android App → Add fingerprint
+      # Paste the SHA1 value shown below under ">>> SHA1 >>>".
+      - name: "PRINT SHA-1 FINGERPRINT — Add this to Firebase Console"
+        script: |
+          echo ""
+          echo "========================================================"
+          echo "  COPY THE SHA-1 BELOW INTO FIREBASE CONSOLE"
+          echo "  Firebase Console → Project Settings → Android App"
+          echo "  → Add fingerprint"
+          echo "========================================================"
+          echo ""
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep -E "^(Owner|Issuer|Serial|Valid|Certificate fingerprints|SHA1|SHA256|MD5)"
+          echo ""
+          echo "--- SHA1 only (paste this into Firebase) ---"
+          keytool -list \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep "SHA1"
+          echo "--- END ---"
+          echo ""
+
+      # ── Step 4: Build ─────────────────────────────────────────────────
       - name: Build debug APK
         script: ./gradlew :app:assembleDebug --no-daemon
 
@@ -48,21 +81,50 @@ workflows:
         - $HOME/.gradle/wrapper
 
     scripts:
-      - name: Get Gradle wrapper jar and set fixed keystore
+      # ── Step 1: Bootstrap Gradle wrapper ──────────────────────────────
+      - name: Get Gradle wrapper jar
         script: |
           mkdir -p gradle/wrapper
           curl -fL \
             "https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar" \
             -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
-          # Use our bundled debug keystore so SHA-1 is always predictable
+
+      # ── Step 2: Install the repo keystore as the system debug keystore ─
+      - name: Install fixed debug keystore
+        script: |
           mkdir -p ~/.android
           cp keystore/debug.keystore ~/.android/debug.keystore
-          echo "=== Using fixed debug keystore SHA-1: ==="
-          keytool -list -v -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey -storepass android -keypass android 2>/dev/null \
-            | grep -E "SHA1|SHA256"
+          echo "Keystore installed at ~/.android/debug.keystore"
 
+      # ── Step 3: PRINT SHA-1 — copy this into Firebase Console ─────────
+      - name: "PRINT SHA-1 FINGERPRINT — Add this to Firebase Console"
+        script: |
+          echo ""
+          echo "========================================================"
+          echo "  COPY THE SHA-1 BELOW INTO FIREBASE CONSOLE"
+          echo "  Firebase Console → Project Settings → Android App"
+          echo "  → Add fingerprint"
+          echo "========================================================"
+          echo ""
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep -E "^(Owner|Issuer|Serial|Valid|Certificate fingerprints|SHA1|SHA256|MD5)"
+          echo ""
+          echo "--- SHA1 only (paste this into Firebase) ---"
+          keytool -list \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null \
+            | grep "SHA1"
+          echo "--- END ---"
+          echo ""
+
+      # ── Step 4: Build ─────────────────────────────────────────────────
       - name: Build release APK
         script: ./gradlew :app:assembleRelease --no-daemon
 
