@@ -56,6 +56,18 @@ class DeckNotificationEngine(private val context: Context) {
         private const val KEY_SONG_COUNT_PREV = "prev_song_count"
         private const val KEY_STREAK          = "listening_streak"
         private const val KEY_STREAK_LAST_DAY = "streak_last_day"
+        // ── Notification type constants ───────────────────────────────
+        const val NOTIF_COMEBACK      = 1
+        const val NOTIF_STREAK        = 2
+        const val NOTIF_TOP_SONG      = 3
+        const val NOTIF_WEEKLY_STATS  = 4
+        const val NOTIF_MOOD_MORNING  = 5
+        const val NOTIF_MOOD_EVENING  = 6
+        const val NOTIF_DISCOVERY     = 7
+        const val NOTIF_MILESTONE     = 8
+        const val NOTIF_NEW_SONGS     = 9
+        const val NOTIF_QUEUE_HINT    = 10
+        const val NOTIF_TIP           = 11
     }
 
     private val nm    = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -486,20 +498,7 @@ class DeckNotificationEngine(private val context: Context) {
     private fun getMilestone(plays: Int) = listOf(10, 25, 50, 100, 250, 500, 1000)
         .lastOrNull { plays >= it }
 
-    // ── Notification type constants ───────────────────────────────────────
-    companion object {
-        const val NOTIF_COMEBACK      = 1
-        const val NOTIF_STREAK        = 2
-        const val NOTIF_TOP_SONG      = 3
-        const val NOTIF_WEEKLY_STATS  = 4
-        const val NOTIF_MOOD_MORNING  = 5
-        const val NOTIF_MOOD_EVENING  = 6
-        const val NOTIF_DISCOVERY     = 7
-        const val NOTIF_MILESTONE     = 8
-        const val NOTIF_NEW_SONGS     = 9
-        const val NOTIF_QUEUE_HINT    = 10
-        const val NOTIF_TIP           = 11
-    }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

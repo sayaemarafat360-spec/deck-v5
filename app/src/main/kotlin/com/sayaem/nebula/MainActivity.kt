@@ -121,7 +121,6 @@ fun DeckRoot(
     // Video player queue state — stores the full list + which index to start at
     var videoQueue     by remember { mutableStateOf<List<com.sayaem.nebula.data.models.Song>>(emptyList()) }
     var videoStartIdx  by remember { mutableIntStateOf(0) }
-    val videoSong get() = videoQueue.getOrNull(videoStartIdx)  // compat alias
     var showSplash     by remember { mutableStateOf(true) }
     var showOnboarding by remember { mutableStateOf(!vm.store.isOnboardingDone()) }
     var openFolder     by remember { mutableStateOf<FolderContent?>(null) }
@@ -235,7 +234,10 @@ fun DeckRoot(
                             )
                             Screen.Videos -> VideosScreen(
                                 videos        = videos,
-                                onVideoClick  = { videoSong = it },
+                                onVideoClick  = { clicked ->
+                                    videoQueue = videos
+                                    videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
+                                },
                                 onMoreClick    = { optionsVideo = it },
                                 onSearchClick  = { showSearch = true },
                                 onRefresh      = { vm.scanMedia() },

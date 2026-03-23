@@ -190,10 +190,13 @@ fun VideoPlayerScreen(
                 .mapIndexed { i, _ -> "Subtitle ${i + 1}" }
             audioTracks = tracks.groups.indices
                 .filter { tracks.groups[it].type == C.TRACK_TYPE_AUDIO }
-                .mapIndexed { i, _ ->
-                    val fmt = tracks.groups[it].getTrackFormat(0)
+                .mapIndexed { i, origIdx ->
+                    // origIdx is the original index into tracks.groups
+                    val fmt  = tracks.groups[origIdx].getTrackFormat(0)
                     val lang = fmt.language?.uppercase() ?: "Track ${i + 1}"
-                    val ch   = if (fmt.channelCount == 1) "Mono" else if (fmt.channelCount == 2) "Stereo" else "${fmt.channelCount}ch"
+                    val ch   = if (fmt.channelCount == 1) "Mono"
+                               else if (fmt.channelCount == 2) "Stereo"
+                               else "${fmt.channelCount}ch"
                     "$lang · $ch"
                 }
         } catch (_: Exception) {}
