@@ -91,40 +91,80 @@ class BackendViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun handleGoogleSignInResult(result: ActivityResult) {
-        if (result.resultCode != android.app.Activity.RESULT_OK) {
-            if (result.resultCode == 0) {
-                // resultCode 0 = RESULT_CANCELED = SHA-1 mismatch or user cancelled
-                // Show nothing if user just pressed back
-            }
-            return
-        }
         viewModelScope.launch {
             _isSyncing.value = true
             try {
+                // KEY FIX: Always call getSignedInAccountFromIntent regardless of resultCode.
+                // When GMS fails (NETWORK_ERROR, SHA-1 mismatch, etc.) it returns
+                // resultCode = RESULT_CANCELED (0) but the intent still carries an ApiException.
+                // The old code did `if (resultCode != RESULT_OK) return` — which silently
+                // swallowed NETWORK_ERROR, status 10, and every other GMS failure.
+                // Now we always extract the result; the exception handling below surfaces it.
                 val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
                     .getResult(ApiException::class.java)
-                val idToken = account.idToken ?: run {
-                    _message.value = "Sign-in failed — no ID token"
-                    _isSyncing.value = false
+
+                val idToken = account?.idToken
+                if (idToken == null) {
+                    _message.value = "Sign-in failed: no ID token received.\n" +
+                        "Did you re-download google-services.json after adding SHA-1?"
                     return@launch
                 }
+
                 val res = DeckBackend.signInWithGoogle(idToken)
                 if (res.isSuccess) {
                     refreshPremium()
                     pullCloudData()
-                    _message.value = "Signed in as ${res.getOrNull()?.displayName}"
+                    _message.value = "Signed in as ${res.getOrNull()?.displayName ?: "user"} ✓"
                 } else {
-                    _message.value = "Sign-in failed — check Firebase SHA-1"
+                    _message.value = "Firebase sign-in failed. Check SHA-1 in Firebase Console."
                 }
+
             } catch (e: ApiException) {
-                when (e.statusCode) {
-                    12501 -> { /* user cancelled — silent */ }
-                    10    -> _message.value = "Sign-in error: add SHA-1 to Firebase"
-                    else  -> _message.value = "Sign-in error (${e.statusCode})"
+                // Map every known GMS status code to a human-readable, actionable message
+                _message.value = when (e.statusCode) {
+                    // 12501 = user pressed Back on the account picker — truly silent
+                    12501 -> null
+
+                    // 12502 = sign-in interrupted (activity destroyed mid-flow)
+                    12502 -> "Sign-in interrupted. Please try again."
+
+                    // 7 = NETWORK_ERROR — GMS could not reach Google's servers.
+                    // Your logcat shows exactly this: AuthPII getToken() -> NETWORK_ERROR
+                    // Causes: (a) no internet, (b) stale google-services.json after SHA-1 was added
+                    7 -> "Sign-in failed: network error.\n" +
+                         "1. Check internet connection.\n" +
+                         "2. Re-download google-services.json from Firebase Console " +
+                         "after adding SHA-1, then rebuild."
+
+                    // 10 = DEVELOPER_ERROR — SHA-1 not registered, wrong package name,
+                    // or google-services.json not updated after SHA-1 was added
+                    10 -> "Sign-in error 10: developer configuration issue.\n" +
+                          "Steps:\n" +
+                          "1. Firebase Console → Project Settings → Android app → Add SHA-1\n" +
+                          "2. Download the new google-services.json\n" +
+                          "3. Replace app/google-services.json in your project\n" +
+                          "4. Rebuild and redeploy"
+
+                    // 4 = SIGN_IN_CANCELLED — cancelled programmatically or timed out
+                    4 -> "Sign-in cancelled. Try again."
+
+                    // 8 = INTERNAL_ERROR — Play Services internal issue
+                    8 -> "Google Play Services internal error. Restart the app and try again."
+
+                    else -> "Sign-in error (code ${e.statusCode}). Try again."
                 }
             } catch (e: Exception) {
-                // Never swallow silently — surface the real error so it can be diagnosed
-                _message.value = "Sign-in failed: ${e.message ?: "unknown error"}"
+                val msg = e.message ?: "unknown"
+                _message.value = when {
+                    // Null intent — user pressed Back before picking account
+                    msg.contains("null", ignoreCase = true) -> null
+
+                    msg.contains("NETWORK_ERROR", ignoreCase = true) ->
+                        "Sign-in network error. Check internet & ensure google-services.json " +
+                        "was re-downloaded after adding SHA-1 to Firebase."
+
+                    else -> "Sign-in failed: $msg"
+                }
             } finally {
                 _isSyncing.value = false
             }
