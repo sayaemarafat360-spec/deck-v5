@@ -33,21 +33,35 @@ object DeckBackend {
     }
 
     // ── Google Sign-In ────────────────────────────────────────────────
-    // NOTE: Requires Web Client OAuth ID in Firebase console
-    // Go to: Firebase Console → Authentication → Sign-in method → Google →
-    // copy the "Web client ID" and set it in strings.xml as default_web_client_id
     suspend fun signInWithGoogle(idToken: String): Result<FirebaseUser> {
         return try {
-            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            val credential  = GoogleAuthProvider.getCredential(idToken, null)
             val currentUser = auth.currentUser
 
-            // If the user is already signed in anonymously, LINK the Google credential
-            // to that anonymous account instead of creating a second account.
-            // signInWithCredential on an existing anon session throws an exception.
-            val result = if (currentUser != null && currentUser.isAnonymous) {
-                currentUser.linkWithCredential(credential).await()
-            } else {
-                auth.signInWithCredential(credential).await()
+            val result = when {
+                // Case 1: No session at all — plain sign-in
+                currentUser == null -> {
+                    auth.signInWithCredential(credential).await()
+                }
+                // Case 2: Anonymous session exists — try to upgrade it by linking.
+                // If this Google account was already linked to a DIFFERENT anonymous
+                // UID (e.g. from a previous install), linkWithCredential throws
+                // FirebaseAuthUserCollisionException. We catch that below and fall back
+                // to a fresh signInWithCredential, which signs in to the existing account.
+                currentUser.isAnonymous -> {
+                    try {
+                        currentUser.linkWithCredential(credential).await()
+                    } catch (linkEx: com.google.firebase.auth.FirebaseAuthUserCollisionException) {
+                        // Google account already exists in Firebase under a different UID.
+                        // Sign out the anonymous session and sign in to the real account.
+                        auth.signOut()
+                        auth.signInWithCredential(credential).await()
+                    }
+                }
+                // Case 3: Already signed in with a real account — re-auth / no-op
+                else -> {
+                    auth.signInWithCredential(credential).await()
+                }
             }
 
             val user = result.user ?: throw Exception("Sign-in failed — no user returned")

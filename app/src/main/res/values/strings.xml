@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Deck</string>
-    <string name="default_web_client_id">757949659304-vqc4rvipgkc63kt5sr5gndjnfrodeat1.apps.googleusercontent.com</string>
+    <!--
+        DO NOT add default_web_client_id here.
+        The google-services Gradle plugin auto-generates it from google-services.json
+        at build time. Hardcoding it causes a duplicate resource conflict and
+        means the value never picks up changes when you refresh google-services.json.
+    -->
 </resources>

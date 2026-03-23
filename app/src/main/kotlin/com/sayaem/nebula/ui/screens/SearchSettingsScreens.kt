@@ -3,6 +3,9 @@ package com.sayaem.nebula.ui.screens
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import java.security.MessageDigest
 import android.net.Uri
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -392,6 +395,42 @@ fun SettingsScreen(
         // ── About ───────────────────────────────────────────────────────
         item { SSection("About") }
         item { STile("Version", Icons.Filled.Info, NebulaViolet, "Deck v1.0.0") }
+        // ── Runtime SHA-1 diagnostic ────────────────────────────────────
+        // Shows the ACTUAL SHA-1 of the installed APK that GMS reads.
+        // Must match exactly what is in Firebase Console → Project Settings → SHA-1.
+        // If they don't match → Google Sign-In error 10.
+        item {
+            val runtimeSHA1 = remember { getRuntimeSHA1(context) }
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NebulaViolet.copy(alpha = 0.08f))
+                    .border(1.dp, NebulaViolet.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                    .padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Fingerprint, null, tint = NebulaViolet, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Runtime SHA-1 (for Firebase)", style = MaterialTheme.typography.labelMedium,
+                        color = LocalAppColors.current.textPrimary, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    runtimeSHA1,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    ),
+                    color = NebulaViolet
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "This SHA-1 must be in Firebase Console → Project Settings → Your App → Fingerprints",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalAppColors.current.textTertiary
+                )
+            }
+        }
         item {
             STile("Rate on Play Store", Icons.Filled.Star, NebulaAmber,
                 trailing = { Icon(Icons.Filled.OpenInNew, null, tint = LocalAppColors.current.textTertiary) },
@@ -475,5 +514,28 @@ fun STile(
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = LocalAppColors.current.textTertiary)
         }
         trailing?.invoke()
+    }
+}
+
+// ── Runtime SHA-1 of the installed APK ───────────────────────────────────
+// This is what GMS reads at runtime — must match what's in Firebase Project Settings.
+// If this differs from the SHA-1 you added to Firebase, Google Sign-In will give error 10.
+private fun getRuntimeSHA1(context: android.content.Context): String {
+    return try {
+        @Suppress("DEPRECATION")
+        val sigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            context.packageManager
+                .getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                .signingInfo.apkContentsSigners
+        } else {
+            context.packageManager
+                .getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+                .signatures
+        }
+        val md    = MessageDigest.getInstance("SHA-1")
+        val bytes = md.digest(sigs[0].toByteArray())
+        bytes.joinToString(":") { "%02X".format(it) }
+    } catch (e: Exception) {
+        "Error: ${e.message}"
     }
 }

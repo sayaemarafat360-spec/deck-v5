@@ -69,11 +69,15 @@ class BackendViewModel(app: Application) : AndroidViewModel(app) {
 
         // Sign in anonymously if not signed in — gets a UID for FCM/Firestore
         // without forcing the user to create an account
-        if (!DeckBackend.isSignedIn) {
-            viewModelScope.launch {
-                DeckBackend.signInAnonymously()
-            }
-        }
+        // NOTE: Anonymous sign-in is intentionally DISABLED here.
+        // The anonymous→Google linkWithCredential path causes DEVELOPER_ERROR (10)
+        // when the anonymous session is stale or the Google account was already linked
+        // to a different UID. We skip anonymous auth entirely and go straight to
+        // Google sign-in when the user requests it.
+        // Uncomment below ONLY if you need anonymous UID for analytics before sign-in.
+        // if (!DeckBackend.isSignedIn) {
+        //     viewModelScope.launch { DeckBackend.signInAnonymously() }
+        // }
     }
 
     // ── Google Sign-In ────────────────────────────────────────────────
@@ -82,24 +86,38 @@ class BackendViewModel(app: Application) : AndroidViewModel(app) {
     // Then add to strings.xml: <string name="default_web_client_id">YOUR_WEB_CLIENT_ID</string>
     // activity must be the calling Activity — GoogleSignIn.getClient() requires
     // an Activity context, NOT Application context (causes ClassCastException otherwise)
+    // Kept as a reference — actual launch is now done via launchGoogleSignIn
     fun getGoogleSignInIntent(activity: android.app.Activity): Intent {
+        val webClientId = try {
+            activity.getString(R.string.default_web_client_id)
+        } catch (_: android.content.res.Resources.NotFoundException) {
+            _message.value = "Config error: google-services.json missing type-3 client. " +
+                "Re-download it from Firebase Console."
+            return GoogleSignIn.getClient(
+                activity, GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
+            ).signInIntent
+        }
+        // FIX: sign out from GMS first to clear any stale cached state that causes error 10
+        // on repeated sign-in attempts. This is required when a previous attempt failed.
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(activity.getString(R.string.default_web_client_id))
+            .requestIdToken(webClientId)
             .requestEmail()
+            .requestProfile()
             .build()
-        return GoogleSignIn.getClient(activity, gso).signInIntent
+        val client = GoogleSignIn.getClient(activity, gso)
+        // Eagerly sign out so GMS doesn't serve a cached error-10 state.
+        // The callback is fire-and-forget; we don't need to wait for it.
+        client.signOut()
+        return client.signInIntent
     }
 
     fun handleGoogleSignInResult(result: ActivityResult) {
         viewModelScope.launch {
             _isSyncing.value = true
             try {
-                // KEY FIX: Always call getSignedInAccountFromIntent regardless of resultCode.
-                // When GMS fails (NETWORK_ERROR, SHA-1 mismatch, etc.) it returns
-                // resultCode = RESULT_CANCELED (0) but the intent still carries an ApiException.
-                // The old code did `if (resultCode != RESULT_OK) return` — which silently
-                // swallowed NETWORK_ERROR, status 10, and every other GMS failure.
-                // Now we always extract the result; the exception handling below surfaces it.
+                // Always call getSignedInAccountFromIntent regardless of resultCode.
+                // When GMS fails it returns resultCode=0 but the intent still carries
+                // the ApiException. Checking only resultCode swallows all GMS errors silently.
                 val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
                     .getResult(ApiException::class.java)
 
@@ -136,14 +154,17 @@ class BackendViewModel(app: Application) : AndroidViewModel(app) {
                          "2. Re-download google-services.json from Firebase Console " +
                          "after adding SHA-1, then rebuild."
 
-                    // 10 = DEVELOPER_ERROR — SHA-1 not registered, wrong package name,
-                    // or google-services.json not updated after SHA-1 was added
-                    10 -> "Sign-in error 10: developer configuration issue.\n" +
-                          "Steps:\n" +
-                          "1. Firebase Console → Project Settings → Android app → Add SHA-1\n" +
-                          "2. Download the new google-services.json\n" +
-                          "3. Replace app/google-services.json in your project\n" +
-                          "4. Rebuild and redeploy"
+                    // 10 = DEVELOPER_ERROR from GMS (thrown before Firebase is reached).
+                    // Most common causes in order:
+                    // 1. OAuth consent screen not configured in Google Cloud Console
+                    //    (separate from Firebase Console — many developers miss this)
+                    // 2. SHA-1 fingerprint mismatch
+                    // 3. Package name wrong in Firebase
+                    10 -> "Sign-in error 10. Fix: Go to " +
+                          "console.cloud.google.com → APIs & Services → " +
+                          "OAuth consent screen → configure it (app name + support email) " +
+                          "→ set to External → Save. " +
+                          "This is separate from Firebase Console."
 
                     // 4 = SIGN_IN_CANCELLED — cancelled programmatically or timed out
                     4 -> "Sign-in cancelled. Try again."
