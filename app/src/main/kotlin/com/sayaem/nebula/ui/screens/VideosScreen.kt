@@ -1,7 +1,7 @@
 package com.sayaem.nebula.ui.screens
 
-import androidx.compose.animation.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import com.sayaem.nebula.data.models.Song
+import com.sayaem.nebula.ui.components.EmptyState
 import com.sayaem.nebula.ui.components.VideoThumbnail
 import com.sayaem.nebula.ui.theme.*
 import com.sayaem.nebula.ui.theme.LocalAppColors

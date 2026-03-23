@@ -442,3 +442,47 @@ fun VideoThumbnail(
         overlayContent()
     }
 }
+
+// ── Shared empty state ────────────────────────────────────────────────────
+// Previously in LibraryScreen.kt — moved here so all screens can use it
+@Composable
+fun EmptyState(title: String, subtitle: String) {
+    Box(
+        Modifier.fillMaxSize().padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.MusicOff, null,
+                tint = LocalAppColors.current.textTertiary,
+                modifier = Modifier.size(56.dp))
+            Spacer(Modifier.height(16.dp))
+            Text(title, style = MaterialTheme.typography.headlineSmall,
+                color = LocalAppColors.current.textTertiary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium,
+                    color = LocalAppColors.current.textTertiary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
+    }
+}
+
+// ── Shared sort chip ──────────────────────────────────────────────────────
+// Previously in LibraryScreen.kt — moved here so all screens can use it
+@Composable
+fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+            .background(if (selected) NebulaViolet else LocalAppColors.current.card)
+            .border(0.5.dp,
+                if (selected) NebulaViolet else LocalAppColors.current.border,
+                androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium,
+            color = if (selected) Color.White else LocalAppColors.current.textSecondary)
+    }
+}
