@@ -122,7 +122,7 @@ fun VideoPlayerScreen(
         }
     }
     LaunchedEffect(idx) { if (idx != startIndex) loadVideo(video) }
-    BackHandler(onBack)
+    BackHandler { onBack() }
 
     // ── Playback state ────────────────────────────────────────────────────
     var isPlaying  by remember { mutableStateOf(true) }
@@ -741,11 +741,11 @@ private fun SeekBarSection(
             Modifier.fillMaxWidth().height(28.dp)
                 .pointerInput(dur) {
                     detectHorizontalDragGestures(
-                        onDragStart = { o -> onDragStart((o.x / size.width).coerceIn(0f, 1f)) },
-                        onDrag      = { _, dx ->
+                        onDragStart  = { o -> onDragStart((o.x / size.width).coerceIn(0f, 1f)) },
+                        onHorizontalDrag = { _, dx ->
                             onDragMove((dragFrac + dx / size.width).coerceIn(0f, 1f))
                         },
-                        onDragEnd   = { onDragEnd(dragFrac) },
+                        onDragEnd    = { onDragEnd(dragFrac) },
                         onDragCancel = { onDragEnd(dragFrac) }
                     )
                 }

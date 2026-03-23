@@ -50,7 +50,6 @@ fun HomeScreen(
     onClearHistory: () -> Unit = {},
     isPremium: Boolean,
     isScanning: Boolean = false,
-    onDeleteHistoryItem: (Song) -> Unit = {},
 ) {
     val appColors = LocalAppColors.current
     val hour      = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
@@ -184,9 +183,8 @@ fun HomeScreen(
                         ) {
                             items(recentSongs, key = { "hist_${it.id}" }) { song ->
                                 HistoryCard(
-                                    song     = song,
-                                    onClick  = { if (song.isVideo) onVideoClick(song) else onSongClick(song) },
-                                    onDelete = { onDeleteHistoryItem(song) }
+                                    song    = song,
+                                    onClick = { if (song.isVideo) onVideoClick(song) else onSongClick(song) }
                                 )
                             }
                         }
@@ -430,11 +428,6 @@ private fun HomeRecentSongRow(song: Song, onClick: () -> Unit, onMoreClick: () -
         }
     }
 }
-
-
-// ── Horizontal history card with delete button ────────────────────────────
-@Composable
-
 
 
 // ── History card — compact horizontal card for both songs and videos ──────

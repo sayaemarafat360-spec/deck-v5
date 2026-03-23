@@ -234,16 +234,14 @@ fun DeckRoot(
                                     videoQueue = videos
                                     videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
                                 },
-                                onMoreVideo  = { optionsVideo = it },
-                                onMoreSong   = { optionsSong = it },
                                 onMoreVideo   = { optionsVideo = it },
+                                onMoreSong    = { optionsSong = it },
                                 onResumeClick = { showNowPlaying = true },
                                 onSearchClick = { showSearch = true },
-                                onRefresh            = { vm.scanMedia() },
-                                isPremium            = isPremium,
-                                isScanning           = isScanning,
-                                onDeleteHistoryItem  = { vm.removeFromHistory(it.id) },
-                                onClearHistory       = { vm.clearHistory() },
+                                onRefresh     = { vm.scanMedia() },
+                                isPremium     = isPremium,
+                                isScanning    = isScanning,
+                                onClearHistory = { vm.clearHistory() },
                             )
                             Screen.Videos -> VideosScreen(
                                 videos        = videos,
