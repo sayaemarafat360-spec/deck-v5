@@ -8,7 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.provider.Settings
-import android.widget.Toast
+import com.sayaem.nebula.notifications.DeckToastEngine
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,7 +73,7 @@ fun SongOptionsSheet(
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             onDelete()
-            Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
+            DeckToastEngine.songDeleted()
         }
         showDeleteConfirm = false
         onDismiss()
@@ -111,8 +111,8 @@ fun SongOptionsSheet(
 
             // Audio-specific options
             SheetOption(Icons.Filled.PlayArrow,           "Play Now",             NebulaViolet) { onPlayNow(); onDismiss() }
-            SheetOption(Icons.Filled.SkipNext,            "Play Next",            NebulaViolet) { onPlayNext(); Toast.makeText(context,"Playing next",Toast.LENGTH_SHORT).show(); onDismiss() }
-            SheetOption(Icons.Filled.AddToQueue,          "Add to Queue",         NebulaViolet) { onAddToQueue(); Toast.makeText(context,"Added to queue",Toast.LENGTH_SHORT).show(); onDismiss() }
+            SheetOption(Icons.Filled.SkipNext,            "Play Next",            NebulaViolet) { onPlayNext(); DeckToastEngine.playingNext(); onDismiss() }
+            SheetOption(Icons.Filled.AddToQueue,          "Add to Queue",         NebulaViolet) { onAddToQueue(); DeckToastEngine.addedToQueue(); onDismiss() }
             SheetOption(Icons.Filled.PlaylistAdd,         "Add to Playlist",      NebulaCyan)   { showPlaylistPicker = true }
             SheetOption(
                 if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -131,8 +131,8 @@ fun SongOptionsSheet(
 
     if (showPlaylistPicker) PlaylistPickerSheet(song, playlists, newPlaylistName,
         onNameChange = { newPlaylistName = it },
-        onCreatePlaylist = { onCreateAndAddPlaylist(it); Toast.makeText(context,"Added to playlist",Toast.LENGTH_SHORT).show(); showPlaylistPicker = false; onDismiss() },
-        onAddToExisting = { pid -> onAddToPlaylist(pid); Toast.makeText(context,"Added to playlist",Toast.LENGTH_SHORT).show(); showPlaylistPicker = false; onDismiss() },
+        onCreatePlaylist = { onCreateAndAddPlaylist(it); DeckToastEngine.addedToPlaylist("playlist"); showPlaylistPicker = false; onDismiss() },
+        onAddToExisting = { pid -> onAddToPlaylist(pid); DeckToastEngine.addedToPlaylist("playlist"); showPlaylistPicker = false; onDismiss() },
         onDismiss = { showPlaylistPicker = false }
     )
 
@@ -143,7 +143,7 @@ fun SongOptionsSheet(
             scope.launch { performDelete(context, song,
                 onSuccess = { onDelete(); showDeleteConfirm = false; onDismiss() },
                 onNeedsPermission = { sender -> deleteIntentLauncher.launch(IntentSenderRequest.Builder(sender).build()) },
-                onFailure = { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show(); showDeleteConfirm = false }
+                onFailure = { msg -> DeckToastEngine.error(msg); showDeleteConfirm = false }
             )}
         },
         onDismiss = { showDeleteConfirm = false }
@@ -173,7 +173,7 @@ fun VideoOptionsSheet(
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             onDelete()
-            Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
+            DeckToastEngine.songDeleted()
         }
         showDeleteConfirm = false
         onDismiss()
@@ -230,7 +230,7 @@ fun VideoOptionsSheet(
             SheetOption(Icons.Filled.ContentCopy,  "Copy Path",            NebulaViolet) {
                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("path", video.filePath))
-                Toast.makeText(context, "Path copied", Toast.LENGTH_SHORT).show()
+                DeckToastEngine.copied()
                 onDismiss()
             }
             SheetOption(Icons.Filled.OpenInNew,    "Open With",            NebulaAmber) {
@@ -239,7 +239,7 @@ fun VideoOptionsSheet(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 try { context.startActivity(Intent.createChooser(intent, "Open with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                catch (_: Exception) { Toast.makeText(context, "No app found", Toast.LENGTH_SHORT).show() }
+                catch (_: Exception) { DeckToastEngine.error("No app found to open this file") }
                 onDismiss()
             }
             SheetOption(Icons.Filled.Delete,       "Delete from Device",   NebulaRed)   { showDeleteConfirm = true }
@@ -255,7 +255,7 @@ fun VideoOptionsSheet(
             scope.launch { performDelete(context, video,
                 onSuccess = { onDelete(); showDeleteConfirm = false; onDismiss() },
                 onNeedsPermission = { sender -> deleteIntentLauncher.launch(IntentSenderRequest.Builder(sender).build()) },
-                onFailure = { msg -> Toast.makeText(context, msg, Toast.LENGTH_LONG).show(); showDeleteConfirm = false }
+                onFailure = { msg -> DeckToastEngine.error(msg); showDeleteConfirm = false }
             )}
         },
         onDismiss = { showDeleteConfirm = false }
@@ -465,7 +465,7 @@ private suspend fun setRingtone(context: Context, song: Song) = withContext(Disp
         catch (_: Exception) { context.contentResolver.update(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values,
             "${MediaStore.Audio.Media._ID}=?", arrayOf(song.id.toString())) }
         RingtoneManager.setActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE, song.uri)
-        withContext(Dispatchers.Main) { Toast.makeText(context, "Set as ringtone ✓", Toast.LENGTH_SHORT).show() }
+        withContext(Dispatchers.Main) { DeckToastEngine.ringtoneSet("Ringtone") }
     } catch (e: Exception) { e.printStackTrace() }
 }
 

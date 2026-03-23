@@ -3,8 +3,13 @@ package com.sayaem.nebula.player
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.MediaStore
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -71,6 +76,9 @@ class DeckNotificationManager(private val context: Context) {
             val prefs    = context.getSharedPreferences("deck_data", Context.MODE_PRIVATE)
             val expanded = prefs.getBoolean("notif_expanded", true)
 
+            // Load album art bitmap for notification large icon + lock screen
+            val artBitmap: Bitmap? = loadAlbumArt(song.albumArtUri, song.id)
+
             val builder = NotificationCompat.Builder(context, CHANNEL_PLAYBACK)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(song.title)
@@ -80,11 +88,16 @@ class DeckNotificationManager(private val context: Context) {
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
+            // Set album art as large icon — shows in notification shade + lock screen
+            if (artBitmap != null) {
+                builder.setLargeIcon(artBitmap)
+            }
+
             if (expanded) {
-                // Full media controls: prev + play/pause + next
+                val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
+                    .setShowActionsInCompactView(0, 1, 2)
                 builder
-                    .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
-                        .setShowActionsInCompactView(0, 1, 2))
+                    .setStyle(mediaStyle)
                     .addAction(android.R.drawable.ic_media_previous, "Previous", actionIntent(ACTION_PREV))
                     .addAction(
                         if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
@@ -93,7 +106,6 @@ class DeckNotificationManager(private val context: Context) {
                     )
                     .addAction(android.R.drawable.ic_media_next, "Next", actionIntent(ACTION_NEXT))
             } else {
-                // Compact: play/pause only
                 builder
                     .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
                         .setShowActionsInCompactView(0))
@@ -105,6 +117,33 @@ class DeckNotificationManager(private val context: Context) {
             }
             NotificationManagerCompat.from(context).notify(NOTIF_PLAYBACK_ID, builder.build())
         } catch (_: Exception) {}
+    }
+
+    // Load album art synchronously (called on notification update — not main thread critical)
+    private fun loadAlbumArt(artUri: Uri?, songId: Long): Bitmap? {
+        // Try MediaStore album art URI first
+        if (artUri != null) {
+            return try {
+                context.contentResolver.openInputStream(artUri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream)?.let { bmp ->
+                        // Scale to 256×256 to keep notification lightweight
+                        Bitmap.createScaledBitmap(bmp, 256, 256, true)
+                            .also { if (it !== bmp) bmp.recycle() }
+                    }
+                }
+            } catch (_: Exception) { null }
+        }
+        // Fallback: query MediaStore for embedded art via ALBUM_ID
+        return try {
+            val artUriBase = Uri.parse("content://media/external/audio/albumart")
+            val albumId = ContentUris.withAppendedId(artUriBase, songId)
+            context.contentResolver.openInputStream(albumId)?.use { stream ->
+                BitmapFactory.decodeStream(stream)?.let { bmp ->
+                    Bitmap.createScaledBitmap(bmp, 256, 256, true)
+                        .also { if (it !== bmp) bmp.recycle() }
+                }
+            }
+        } catch (_: Exception) { null }
     }
 
     fun cancelPlayback() = nm.cancel(NOTIF_PLAYBACK_ID)

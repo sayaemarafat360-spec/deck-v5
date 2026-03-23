@@ -53,7 +53,12 @@ class MediaRepository(private val context: Context) {
             MediaStore.Audio.Media.YEAR,
             MediaStore.Audio.Media.DATA,
         )
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.SIZE} > 50000"
+        // Read min_duration from user settings (default 30s = 30000ms)
+        val prefs       = context.getSharedPreferences("deck_data", Context.MODE_PRIVATE)
+        val minDurMs    = prefs.getInt("min_duration_sec", 30) * 1000L
+        val selection   = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND " +
+                          "${MediaStore.Audio.Media.SIZE} > 50000 AND " +
+                          "${MediaStore.Audio.Media.DURATION} >= $minDurMs"
 
         context.contentResolver.query(collection, projection, selection, null,
             "${MediaStore.Audio.Media.TITLE} ASC")?.use { cursor ->

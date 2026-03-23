@@ -51,7 +51,7 @@ fun VideosScreen(
     }
 
     // Folder group toggle
-    var groupByFolder by remember { mutableStateOf(false) }
+    var groupByFolder by remember { mutableStateOf(true) }  // folders ON by default
     val folderGroups  = remember(sorted, groupByFolder) {
         if (!groupByFolder) emptyMap()
         else sorted.groupBy { it.filePath.split("/").let { p -> if (p.size >= 2) p[p.size - 2] else "Root" } }
@@ -82,14 +82,30 @@ fun VideosScreen(
                     color = appColors.textTertiary)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Folder group toggle
-                IconButton(onClick = { groupByFolder = !groupByFolder }) {
-                    Icon(
-                        if (groupByFolder) Icons.Filled.FolderOpen else Icons.Filled.Folder,
-                        null,
-                        tint = if (groupByFolder) NebulaViolet else appColors.textTertiary,
-                        modifier = Modifier.size(22.dp)
-                    )
+                // Toggle: Folder view / List view
+                Box(
+                    Modifier.clip(RoundedCornerShape(10.dp))
+                        .background(if (groupByFolder) NebulaViolet.copy(0.15f) else appColors.card)
+                        .border(0.5.dp,
+                            if (groupByFolder) NebulaViolet else appColors.border,
+                            RoundedCornerShape(10.dp))
+                        .clickable { groupByFolder = !groupByFolder }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(
+                            if (groupByFolder) Icons.Filled.FolderOpen else Icons.Filled.ViewList,
+                            null,
+                            tint = if (groupByFolder) NebulaViolet else appColors.textTertiary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            if (groupByFolder) "Folders" else "List",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (groupByFolder) NebulaViolet else appColors.textTertiary
+                        )
+                    }
                 }
                 IconButton(onClick = onSearchClick) {
                     Icon(Icons.Filled.Search, null, tint = appColors.textPrimary, modifier = Modifier.size(22.dp))

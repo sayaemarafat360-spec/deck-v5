@@ -1,6 +1,12 @@
 package com.sayaem.nebula
 
 import android.app.Application
+import com.sayaem.nebula.notifications.DeckToastEngine
+import android.content.Context
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyManager
+import android.telephony.TelephonyCallback
+import android.os.Build
 import android.content.Intent
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
@@ -65,6 +71,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val volumeNormEnabled = _volumeNormEnabled.asStateFlow()
     private var currentAudioSessionId = 0
     private var _state_was_playing = false
+    private var _pausedForCall = false   // true when WE paused, so we resume after call ends
 
     // Fix 4: Read settings from prefs on init
     private val _smartSkipEnabled = MutableStateFlow(store.getSmartSkip())
@@ -127,6 +134,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
+        // Phone call auto-pause/resume
+        registerPhoneStateListener()
+
         // Track song changes
         viewModelScope.launch {
             var prevId: Long? = null
@@ -147,6 +157,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     store.recordRecentPlay(curId)
                     songStartedAt = System.currentTimeMillis()
                     _playStats.value = store.getPlayStats()
+                    // Check for play count milestone — show in-app toast
+                    val totalPlays = _playStats.value.values.sumOf { it.playCount }
+                    if (totalPlays in listOf(10, 25, 50, 100, 250, 500, 1000)) {
+                        DeckToastEngine.info("🏆 $totalPlays songs played! Great listening!")
+                    }
                     // Auto-apply per-song EQ profile
                     store.loadEqProfile(curId)?.let { (bands, preset) ->
                         _eqState.value = _eqState.value.copy(bands = bands.toMutableList(), preset = preset)
@@ -258,8 +273,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Favorites ─────────────────────────────────────────────────────
     fun toggleFavorite(song: Song) {
-        store.toggleFavorite(song.id)
+        val isNowFav = store.toggleFavorite(song.id)
         _favorites.value = store.getFavorites()
+        if (isNowFav) DeckToastEngine.favAdded(song.title)
+        else DeckToastEngine.favRemoved(song.title)
         // Sync to cloud silently
         viewModelScope.launch { DeckBackend.pushFavorites(_favorites.value) }
     }
@@ -286,6 +303,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         val total = minutes * 60
+        DeckToastEngine.sleepTimerSet(minutes)
         _sleepTimer.value = SleepTimerState(isActive = true, totalSeconds = total, remainingSeconds = total)
         sleepTimerJob = viewModelScope.launch {
             for (elapsed in 1..total) {
@@ -310,6 +328,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelSleepTimer() {
         sleepTimerJob?.cancel()
         player.setVolume(1f)
+        DeckToastEngine.sleepTimerCancelled()
         _sleepTimer.value = SleepTimerState()
     }
 
@@ -353,7 +372,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                    onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val ok = repo.updateTags(getApplication(), song, title, artist, album)
-            if (ok) { scanMedia(); loadRecentlyAdded() }
+            if (ok) {
+                DeckToastEngine.tagsSaved()
+                scanMedia(); loadRecentlyAdded()
+            } else {
+                DeckToastEngine.error("Could not save tags")
+            }
             onResult(ok)
         }
     }
@@ -408,6 +432,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun saveEqForCurrentSong() {
         val song = playback.value.currentSong ?: return
         store.saveEqProfile(song.id, _eqState.value.bands, _eqState.value.preset)
+        DeckToastEngine.eqProfileSaved()
     }
 
     fun deleteEqForCurrentSong() {
@@ -452,6 +477,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ExistingPeriodicWorkPolicy.KEEP,
             dailyWork
         )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun registerPhoneStateListener() {
+        val tm = getApplication<Application>()
+            .getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // API 31+ — use TelephonyCallback
+            tm.registerTelephonyCallback(
+                getApplication<Application>().mainExecutor,
+                object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                    override fun onCallStateChanged(state: Int) {
+                        handleCallState(state)
+                    }
+                }
+            )
+        } else {
+            // Pre-API 31 — use deprecated PhoneStateListener
+            tm.listen(object : PhoneStateListener() {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    handleCallState(state)
+                }
+            }, PhoneStateListener.LISTEN_CALL_STATE)
+        }
+    }
+
+    private fun handleCallState(state: Int) {
+        when (state) {
+            TelephonyManager.CALL_STATE_RINGING,
+            TelephonyManager.CALL_STATE_OFFHOOK -> {
+                // Phone is ringing or call active — pause if playing
+                if (player.playerOrNull?.isPlaying == true) {
+                    _pausedForCall = true
+                    player.playerOrNull?.pause()
+                }
+            }
+            TelephonyManager.CALL_STATE_IDLE -> {
+                // Call ended — resume only if WE paused it
+                if (_pausedForCall) {
+                    _pausedForCall = false
+                    player.playerOrNull?.play()
+                }
+            }
+        }
     }
 
     override fun onCleared() {

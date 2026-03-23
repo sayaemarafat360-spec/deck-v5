@@ -34,6 +34,8 @@ import com.sayaem.nebula.data.models.Song
 import com.sayaem.nebula.ui.Screen
 import com.sayaem.nebula.ui.components.MiniPlayer
 import com.sayaem.nebula.ui.screens.*
+import com.sayaem.nebula.notifications.DeckToastEngine
+import com.sayaem.nebula.notifications.DeckToastOverlay
 import com.sayaem.nebula.backend.BackendViewModel
 import com.sayaem.nebula.ui.theme.*
 import com.sayaem.nebula.ui.theme.LocalAppColors
@@ -59,6 +61,8 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent { DeckRoot(vm, backendVm, onGoogleSignIn = { googleSignInLauncher.launch(backendVm.getGoogleSignInIntent(this)) }) }
         requestPermissions()
+        // Schedule today's 10 engagement notifications
+        com.sayaem.nebula.notifications.DeckNotificationEngine(this).scheduleDailyNotifications()
     }
 
     private fun requestPermissions() {
@@ -114,7 +118,10 @@ fun DeckRoot(
     var showSleepTimer by remember { mutableStateOf(false) }
     var showSpeed      by remember { mutableStateOf(false) }
     var showSearch     by remember { mutableStateOf(false) }
-    var videoSong      by remember { mutableStateOf<Song?>(null) }
+    // Video player queue state — stores the full list + which index to start at
+    var videoQueue     by remember { mutableStateOf<List<com.sayaem.nebula.data.models.Song>>(emptyList()) }
+    var videoStartIdx  by remember { mutableIntStateOf(0) }
+    val videoSong get() = videoQueue.getOrNull(videoStartIdx)  // compat alias
     var showSplash     by remember { mutableStateOf(true) }
     var showOnboarding by remember { mutableStateOf(!vm.store.isOnboardingDone()) }
     var openFolder     by remember { mutableStateOf<FolderContent?>(null) }
@@ -126,7 +133,10 @@ fun DeckRoot(
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(backendMsg) {
         backendMsg?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
+            // Route backend messages through DeckToastEngine
+            if (it.startsWith("Signed in")) DeckToastEngine.signedIn(it.removePrefix("Signed in as ").removeSuffix(" ✓"))
+            else if (it.startsWith("Sign")) DeckToastEngine.error(it)
+            else DeckToastEngine.info(it)
             backendVm.clearMessage()
         }
     }
@@ -164,7 +174,7 @@ fun DeckRoot(
             if (showSleepTimer)        BackHandler { showSleepTimer = false }
             if (showEqualizer)         BackHandler { showEqualizer = false }
             if (showNowPlaying)        BackHandler { showNowPlaying = false }
-            if (videoSong != null)     BackHandler { videoSong = null }
+            if (videoQueue.isNotEmpty()) BackHandler { videoQueue = emptyList() }
             if (openFolder != null)    BackHandler { openFolder = null }
             if (openVideoFolder != null) BackHandler { openVideoFolder = null }
             BackHandler(enabled = currentTab != Screen.Home) { currentTab = Screen.Home }
@@ -185,7 +195,7 @@ fun DeckRoot(
                     bottomBar = {
                         Column {
                             AnimatedVisibility(
-                                visible = playback.currentSong != null && videoSong == null,
+                                visible = playback.currentSong != null && videoQueue.isEmpty(),
                                 enter   = slideInVertically { it } + fadeIn(),
                                 exit    = slideOutVertically { it } + fadeOut()
                             ) {
@@ -196,7 +206,7 @@ fun DeckRoot(
                                     onExpand     = { showNowPlaying = true }
                                 )
                             }
-                            if (videoSong == null) {
+                            if (videoQueue.isEmpty()) {
                                 DeckBottomNav(currentTab) { tab -> currentTab = tab }
                             }
                         }
@@ -211,7 +221,10 @@ fun DeckRoot(
                                 recentlyAdded = recentlyAdded,
                                 playbackState = playback,
                                 onSongClick   = { vm.playSong(it); showNowPlaying = true },
-                                onVideoClick  = { videoSong = it },
+                                onVideoClick  = { clicked ->
+                                    videoQueue = videos
+                                    videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
+                                },
                                 onMoreSong    = { optionsSong = it },
                                 onMoreVideo   = { optionsVideo = it },
                                 onResumeClick = { showNowPlaying = true },
@@ -304,7 +317,10 @@ fun DeckRoot(
                         songs         = songs,
                         videos        = videos,
                         onSongClick   = { vm.playSong(it); showNowPlaying = true; showSearch = false },
-                        onVideoClick  = { videoSong = it; showSearch = false },
+                        onVideoClick  = { clicked ->
+                videoQueue = videos; videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
+                showSearch = false
+            },
                         onDismiss     = { showSearch = false }
                     )
                 }
@@ -336,6 +352,16 @@ fun DeckRoot(
                         onEditTag        = { editingTagSong = it },
                         audioSessionId   = audioSessionId,
                     )
+                    // Sheets shown ON TOP of NowPlaying — must be siblings inside same
+                    // AnimatedVisibility so they render above the NowPlaying Box(fillMaxSize)
+                    if (showSleepTimer) {
+                        SleepTimerSheet(state = sleepTimer, onStart = { vm.startSleepTimer(it) },
+                            onCancel = { vm.cancelSleepTimer() }, onDismiss = { showSleepTimer = false })
+                    }
+                    if (showSpeed) {
+                        SpeedPickerSheet(current = speed, onSelect = { vm.setSpeed(it) },
+                            onDismiss = { showSpeed = false })
+                    }
                 }
 
                 // ── Equalizer ─────────────────────────────────────────
@@ -354,14 +380,12 @@ fun DeckRoot(
                     }
                 }
 
-                // ── Sleep Timer ───────────────────────────────────────
-                if (showSleepTimer) {
+                // Sleep/Speed also shown when NOT in NowPlaying (triggered from MoreScreen)
+                if (!showNowPlaying && showSleepTimer) {
                     SleepTimerSheet(state = sleepTimer, onStart = { vm.startSleepTimer(it) },
                         onCancel = { vm.cancelSleepTimer() }, onDismiss = { showSleepTimer = false })
                 }
-
-                // ── Speed ─────────────────────────────────────────────
-                if (showSpeed) {
+                if (!showNowPlaying && showSpeed) {
                     SpeedPickerSheet(current = speed, onSelect = { vm.setSpeed(it) },
                         onDismiss = { showSpeed = false })
                 }
@@ -388,7 +412,10 @@ fun DeckRoot(
                 optionsVideo?.let { video ->
                     VideoOptionsSheet(
                         video = video, onDismiss = { optionsVideo = null },
-                        onPlayNow = { videoSong = video; optionsVideo = null },
+                        onPlayNow = {
+                        videoQueue = videos; videoStartIdx = videos.indexOf(video).coerceAtLeast(0)
+                        optionsVideo = null
+                    },
                         onShare = { vm.shareSong(video); optionsVideo = null },
                         onDelete = { vm.deleteSong(video) {}; optionsVideo = null },
                     )
@@ -411,7 +438,12 @@ fun DeckRoot(
                             songs        = folder.songs,
                             videos       = folder.videos,
                             onSongClick  = { vm.playSong(it); showNowPlaying = true; openFolder = null },
-                            onVideoClick = { videoSong = it; openFolder = null },
+                            onVideoClick = { clicked ->
+                                val folderVids = folder.videos
+                                videoQueue = folderVids
+                                videoStartIdx = folderVids.indexOf(clicked).coerceAtLeast(0)
+                                openFolder = null
+                            },
                             onMoreSong   = { optionsSong = it },
                             onMoreVideo  = { optionsVideo = it },
                             onBack       = { openFolder = null }
@@ -420,19 +452,23 @@ fun DeckRoot(
                 }
 
                 // ── Video Player ──────────────────────────────────────
-                AnimatedVisibility(visible = videoSong != null,
+                AnimatedVisibility(visible = videoQueue.isNotEmpty(),
                     enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
-                    videoSong?.let { song ->
+                    if (videoQueue.isNotEmpty()) {
                         VideoPlayerScreen(
-                            video        = song,
+                            videos       = videoQueue,
+                            startIndex   = videoStartIdx,
                             player       = vm.player.playerOrNull,
                             onPauseMusic = { if (vm.playback.value.isPlaying) vm.player.togglePlay() },
-                            onBack       = { videoSong = null }
+                            onBack       = { videoQueue = emptyList() }
                         )
                     }
                 }
 
             } // end main content
+
+            // ── In-app toast overlay — always on top ────────────────
+            DeckToastOverlay()
         }
     }
 }
@@ -479,10 +515,13 @@ fun SearchOverlay(
     val focusRequester = remember { FocusRequester() }
     val keyboard      = LocalSoftwareKeyboardController.current
 
-    // Auto-focus search field and show keyboard when overlay opens
+    // Auto-focus + show keyboard when search opens
+    // Use 200ms delay — 100ms is sometimes too short before composition settles
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(100)  // brief delay so composition is complete
-        focusRequester.requestFocus()
+        kotlinx.coroutines.delay(200)
+        try {
+            focusRequester.requestFocus()
+        } catch (_: Exception) {}
         keyboard?.show()
     }
     val allMedia = remember(songs, videos) { songs + videos }

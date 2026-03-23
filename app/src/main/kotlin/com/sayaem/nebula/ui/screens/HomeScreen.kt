@@ -177,17 +177,17 @@ fun HomeScreen(
                     item {
                         HomeSectionHeader("Recent Videos", Icons.Filled.VideoLibrary, NebulaRed)
                     }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(videos.take(10), key = { it.id }) { video ->
-                                HomeVideoCard(video, { onVideoClick(video) }, { onMoreVideo(video) })
-                            }
+                    // Vertical video feed — consistent with music rows above
+                    items(videos.take(6), key = { "vid_${it.id}" }) { video ->
+                        Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            com.sayaem.nebula.ui.screens.VideoFeedCard(
+                                video        = video,
+                                onClick      = { onVideoClick(video) },
+                                onMoreClick  = { onMoreVideo(video) }
+                            )
                         }
-                        Spacer(Modifier.height(4.dp))
                     }
+                    item { Spacer(Modifier.height(4.dp)) }
                 }
 
                 // ── AdMob ──────────────────────────────────────────────
