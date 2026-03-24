@@ -29,8 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material.icons.AutoMirrored
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ripple
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -802,8 +802,7 @@ fun VideoPlayerScreen(
                             .border(1.5.dp, Color.White.copy(0.85f), CircleShape)
                             .clickable(
                                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = androidx.compose.material.ripple.rememberRipple(
-                                    bounded = true, color = Color.White),
+                                indication = ripple(bounded = true, color = Color.White),
                                 onClick = {
                                     if (vp.isPlaying) { vp.pause(); isPlaying = false }
                                     else              { vp.play();  isPlaying = true  }

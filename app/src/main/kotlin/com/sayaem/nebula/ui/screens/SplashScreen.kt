@@ -246,7 +246,7 @@ fun DeckSplashScreen(onFinished: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "DECK",
+                "SONIX",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     letterSpacing = 10.sp,
                     fontWeight    = FontWeight.Bold

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Deck</string>
+    <string name="app_name">Sonix</string>
     <!--
         DO NOT add default_web_client_id here.
         The google-services Gradle plugin auto-generates it from google-services.json

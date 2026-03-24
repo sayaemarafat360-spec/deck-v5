@@ -15,17 +15,12 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
@@ -229,6 +224,7 @@ fun DeckRoot(
                                 recentSongs   = recentSongs,
                                 recentlyAdded = recentlyAdded,
                                 playbackState = playback,
+                                playlists     = playlists,
                                 onSongClick   = { vm.playSong(it); showNowPlaying = true },
                                 onVideoClick  = { clicked ->
                                     videoQueue = videos
@@ -242,18 +238,10 @@ fun DeckRoot(
                                 isPremium     = isPremium,
                                 isScanning    = isScanning,
                                 onClearHistory = { vm.clearHistory() },
-                            )
-                            Screen.Videos -> VideosScreen(
-                                videos        = videos,
-                                onVideoClick  = { clicked ->
-                                    videoQueue = videos
-                                    videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
-                                },
-                                onMoreClick    = { optionsVideo = it },
-                                onSearchClick  = { showSearch = true },
-                                onRefresh      = { vm.scanMedia() },
-                                onFolderClick  = { name, folderVids ->
-                                    openVideoFolder = Pair(name, folderVids)
+                                onCreatePlaylist = { vm.createPlaylist(it) },
+                                onPlayPlaylist   = { vm.playPlaylist(it); showNowPlaying = true },
+                                onFolderClick    = { name, folderItems ->
+                                    openVideoFolder = Pair(name, folderItems)
                                 },
                             )
                             Screen.Music -> MusicScreen(
@@ -273,6 +261,19 @@ fun DeckRoot(
                                 onAddSongToPlaylist = { pid, sid -> vm.addSongToPlaylist(pid, sid) },
                                 onRemoveSongFromPlaylist = { pid, sid -> vm.removeSongFromPlaylist(pid, sid) },
                                 onSearchClick      = { showSearch = true },
+                            )
+                            Screen.Discover -> DiscoverScreen(
+                                songs          = songs,
+                                videos         = videos,
+                                recentlyAdded  = recentlyAdded,
+                                topSongs       = vm.topSongs.collectAsStateWithLifecycle().value,
+                                onSongClick    = { vm.playSong(it); showNowPlaying = true },
+                                onPlaySongs    = { list -> vm.playSongList(list); showNowPlaying = true },
+                                onVideoClick   = { clicked ->
+                                    videoQueue = videos
+                                    videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
+                                },
+                                onSearchClick  = { showSearch = true },
                             )
                             Screen.More -> MoreScreen(
                                 isDark              = isDark,
@@ -322,18 +323,20 @@ fun DeckRoot(
                     }
                 }
 
-                // ── Search overlay ────────────────────────────────────
+                // ── Search screen (full-screen, replaces old overlay) ──
                 AnimatedVisibility(visible = showSearch,
                     enter = fadeIn(tween(180)) + slideInVertically { -40 },
                     exit  = fadeOut(tween(150)) + slideOutVertically { -40 }) {
-                    SearchOverlay(
+                    SearchScreen(
                         songs         = songs,
                         videos        = videos,
                         onSongClick   = { vm.playSong(it); showNowPlaying = true; showSearch = false },
                         onVideoClick  = { clicked ->
-                videoQueue = videos; videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
-                showSearch = false
-            },
+                            videoQueue = videos; videoStartIdx = videos.indexOf(clicked).coerceAtLeast(0)
+                            showSearch = false
+                        },
+                        onMoreSong    = { optionsSong = it },
+                        onMoreVideo   = { optionsVideo = it },
                         onDismiss     = { showSearch = false }
                     )
                 }
@@ -494,14 +497,14 @@ fun DeckRoot(
     }
 }
 
-// ── Bottom nav — Playit style ─────────────────────────────────────────────
+// ── Bottom nav ────────────────────────────────────────────────────────────
 @Composable
 fun DeckBottomNav(current: Screen, onNavigate: (Screen) -> Unit) {
     val tabs = listOf(
-        Triple(Screen.Home,   Icons.Filled.Home,         "Home"),
-        Triple(Screen.Videos, Icons.Filled.VideoLibrary, "Videos"),
-        Triple(Screen.Music,  Icons.Filled.MusicNote,    "Music"),
-        Triple(Screen.More,   Icons.Filled.Menu,         "More"),
+        Triple(Screen.Home,     Icons.Filled.Home,         "Home"),
+        Triple(Screen.Music,    Icons.Filled.MusicNote,    "Music"),
+        Triple(Screen.Discover, Icons.Filled.Explore,      "Discover"),
+        Triple(Screen.More,     Icons.Filled.Menu,         "More"),
     )
     NavigationBar(containerColor = DarkBgSecondary, tonalElevation = 0.dp) {
         tabs.forEach { (screen, icon, label) ->
@@ -522,154 +525,3 @@ fun DeckBottomNav(current: Screen, onNavigate: (Screen) -> Unit) {
     }
 }
 
-// ── Search overlay — floats over any tab ──────────────────────────────────
-@Composable
-fun SearchOverlay(
-    songs: List<Song>,
-    videos: List<Song>,
-    onSongClick: (Song) -> Unit,
-    onVideoClick: (Song) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val appColors     = LocalAppColors.current
-    var query         by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-    val keyboard      = LocalSoftwareKeyboardController.current
-
-    // Auto-focus + show keyboard when search opens
-    // Use 200ms delay — 100ms is sometimes too short before composition settles
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(200)
-        try {
-            focusRequester.requestFocus()
-        } catch (_: Exception) {}
-        keyboard?.show()
-    }
-    val allMedia = remember(songs, videos) { songs + videos }
-    val results  = remember(query, allMedia) {
-        if (query.isBlank()) emptyList()
-        else {
-            val q = query.lowercase()
-            allMedia.filter {
-                it.title.lowercase().contains(q) ||
-                it.artist.lowercase().contains(q) ||
-                it.album.lowercase().contains(q)
-            }
-        }
-    }
-
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.7f)).clickable(onClick = onDismiss)) {
-        Column(
-            Modifier.fillMaxWidth()
-                .clickable(enabled = false) {}
-                .background(appColors.bg)
-                .statusBarsPadding()
-        ) {
-            // Search bar
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
-                        .background(appColors.card)
-                        .border(0.5.dp, appColors.border, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Search, null, tint = appColors.textTertiary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    BasicTextField(
-                        value = query, onValueChange = { query = it },
-                        modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                        singleLine = true,
-                        cursorBrush = SolidColor(NebulaViolet),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = appColors.textPrimary),
-                        decorationBox = { inner ->
-                            // Box prevents placeholder from covering the cursor/text
-                            Box {
-                                if (query.isEmpty()) {
-                                    Text("Search songs, videos, artists…",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = appColors.textTertiary)
-                                }
-                                inner()
-                            }
-                        }
-                    )
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Filled.Close, null, tint = appColors.textTertiary, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-                Spacer(Modifier.width(10.dp))
-                TextButton(onClick = onDismiss) {
-                    Text("Cancel", color = NebulaViolet, style = MaterialTheme.typography.labelLarge)
-                }
-            }
-
-            HorizontalDivider(color = appColors.borderSubtle, thickness = 0.5.dp)
-
-            // Results
-            if (query.isBlank()) {
-                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Filled.Search, null, tint = appColors.textTertiary,
-                            modifier = Modifier.size(48.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text("Type to search your library", style = MaterialTheme.typography.bodyMedium,
-                            color = appColors.textTertiary)
-                    }
-                }
-            } else if (results.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                    Text("No results for \"$query\"", style = MaterialTheme.typography.bodyMedium,
-                        color = appColors.textTertiary)
-                }
-            } else {
-                androidx.compose.foundation.lazy.LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 500.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    items(results.size) { i ->
-                        val item = results[i]
-                        Row(
-                            Modifier.fillMaxWidth().clickable {
-                                if (item.isVideo) onVideoClick(item) else onSongClick(item)
-                            }.padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
-                                    .background(if (item.isVideo) NebulaRed.copy(0.15f) else NebulaViolet.copy(0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    if (item.isVideo) Icons.Filled.VideoFile else Icons.Filled.MusicNote,
-                                    null,
-                                    tint = if (item.isVideo) NebulaRed else NebulaViolet,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(item.title, style = MaterialTheme.typography.bodyMedium,
-                                    color = appColors.textPrimary, maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    if (item.isVideo) item.sizeFormatted else item.artist,
-                                    style = MaterialTheme.typography.bodySmall, color = appColors.textTertiary
-                                )
-                            }
-                            Text(item.durationFormatted, style = MaterialTheme.typography.labelSmall,
-                                color = appColors.textTertiary)
-                        }
-                        HorizontalDivider(Modifier.padding(start = 72.dp), color = appColors.borderSubtle, thickness = 0.5.dp)
-                    }
-                }
-            }
-        }
-    }
-}

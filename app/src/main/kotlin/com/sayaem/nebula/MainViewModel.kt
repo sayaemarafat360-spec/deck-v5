@@ -266,6 +266,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         player.playQueue(q, q.indexOf(song).coerceAtLeast(0))
     }
 
+    fun playSongList(list: List<Song>) {
+        if (list.isNotEmpty()) player.playQueue(list, 0)
+    }
+
     fun playPlaylist(playlist: Playlist) {
         val map = songs.value.associateBy { it.id }
         val queue = playlist.songIds.mapNotNull { map[it] }

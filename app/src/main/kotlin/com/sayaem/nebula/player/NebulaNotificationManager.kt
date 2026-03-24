@@ -83,7 +83,7 @@ class DeckNotificationManager(private val context: Context) {
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(song.title)
                 .setContentText(song.artist)
-                .setSubText("Deck")
+                .setSubText("Sonix")
                 .setContentIntent(launchIntent())
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

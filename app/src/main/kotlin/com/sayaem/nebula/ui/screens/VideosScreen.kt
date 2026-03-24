@@ -9,13 +9,12 @@ import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -57,14 +56,11 @@ fun VideosScreen(
         else sorted.groupBy { it.filePath.split("/").let { p -> if (p.size >= 2) p[p.size - 2] else "Root" } }
     }
 
+    var isRefreshing by remember { mutableStateOf(false) }
     val pullState = rememberPullToRefreshState()
-    if (pullState.isRefreshing) {
-        LaunchedEffect(Unit) { onRefresh(); kotlinx.coroutines.delay(1200); pullState.endRefresh() }
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) { onRefresh(); kotlinx.coroutines.delay(1200); isRefreshing = false }
     }
-    val refreshAlpha by animateFloatAsState(
-        targetValue = if (pullState.progress > 0f || pullState.isRefreshing) 1f else 0f,
-        animationSpec = tween(150), label = "ptr"
-    )
 
     Column(Modifier.fillMaxSize().background(appColors.bg)) {
 
@@ -141,7 +137,20 @@ fun VideosScreen(
         }
 
         // ── Video list ─────────────────────────────────────────────────
-        Box(Modifier.fillMaxSize().nestedScroll(pullState.nestedScrollConnection)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { isRefreshing = true },
+            state = pullState,
+            modifier = Modifier.fillMaxSize(),
+            indicator = {
+                androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                    state = pullState,
+                    isRefreshing = isRefreshing,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    color = NebulaViolet,
+                )
+            }
+        ) {
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 200.dp),
@@ -170,11 +179,6 @@ fun VideosScreen(
                     }
                 }
             }
-
-            PullToRefreshContainer(
-                state = pullState, modifier = Modifier.align(Alignment.TopCenter).alpha(refreshAlpha),
-                contentColor = NebulaViolet, containerColor = appColors.card,
-            )
         }
     }
 }
