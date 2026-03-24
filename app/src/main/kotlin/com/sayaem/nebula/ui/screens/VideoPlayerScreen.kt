@@ -27,6 +27,11 @@ import androidx.compose.foundation.shape.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.AutoMirrored
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -578,8 +583,10 @@ fun VideoPlayerScreen(
         // ── Seek gesture HUD ────────────────────────────────────────
         AnimatedVisibility(showSeekHud, enter = fadeIn(tween(80)), exit = fadeOut(tween(300)),
             modifier = Modifier.align(Alignment.Center)) {
-            Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xCC000000))
-                .padding(horizontal = 18.dp, vertical = 10.dp)) {
+            Box(Modifier.clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(0.18f))
+                .border(1.dp, Color.White.copy(0.4f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 20.dp, vertical = 12.dp)) {
                 Text(seekGestureLabel, color = Color.White,
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
@@ -587,15 +594,16 @@ fun VideoPlayerScreen(
 
         // ── Long-press 2× HUD ───────────────────────────────────────
         AnimatedVisibility(longSpeed, enter = fadeIn(tween(80)), exit = fadeOut(tween(200)),
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)) {
-            Box(Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xCC000000))
-                .border(1.dp, Color.White.copy(0.15f), RoundedCornerShape(18.dp))
-                .padding(horizontal = 16.dp, vertical = 7.dp)) {
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp)) {
+            Box(Modifier.clip(RoundedCornerShape(20.dp))
+                .background(Color.White.copy(0.15f))
+                .border(1.dp, Color.White.copy(0.4f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 18.dp, vertical = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Filled.FastForward, null, tint = NebulaViolet, modifier = Modifier.size(15.dp))
-                    Text("2×", color = Color.White, style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold)
+                    Icon(Icons.Rounded.FastForward, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Text("2×  Fast forward", color = Color.White,
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -688,16 +696,18 @@ fun VideoPlayerScreen(
         if (isLocked) {
             AnimatedVisibility(showControls, enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center)) {
-                Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xCC000000))
-                    .border(1.dp, NebulaViolet.copy(0.6f), RoundedCornerShape(14.dp))
+                Box(Modifier.clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(0.12f))
+                    .border(1.dp, Color.White.copy(0.35f), RoundedCornerShape(16.dp))
                     .clickable { isLocked = false }
-                    .padding(horizontal = 24.dp, vertical = 14.dp)) {
+                    .padding(horizontal = 28.dp, vertical = 16.dp)) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Icon(Icons.Filled.LockOpen, null, tint = NebulaViolet,
-                            modifier = Modifier.size(24.dp))
-                        Text("Tap to unlock", color = Color.White.copy(0.9f),
-                            style = MaterialTheme.typography.labelMedium)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Outlined.LockOpen, null, tint = Color.White,
+                            modifier = Modifier.size(26.dp))
+                        Text("Tap to unlock", color = Color.White.copy(0.8f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -712,8 +722,13 @@ fun VideoPlayerScreen(
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(0.78f), 0.20f to Color.Transparent,
-                        0.72f to Color.Transparent,   1f   to Color.Black.copy(0.88f),
+                        // Playit: strong top scrim, fully clear middle, strong bottom scrim
+                        0.00f to Color.Black.copy(0.90f),
+                        0.18f to Color.Black.copy(0.30f),
+                        0.28f to Color.Transparent,
+                        0.70f to Color.Transparent,
+                        0.82f to Color.Black.copy(0.30f),
+                        1.00f to Color.Black.copy(0.95f),
                     )
                 )
             ) {
@@ -725,7 +740,7 @@ fun VideoPlayerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(46.dp)) {
-                        Icon(Icons.Filled.ArrowBack, null, tint = Color.White,
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White,
                             modifier = Modifier.size(22.dp))
                     }
                     Text(video.title, color = Color.White,
@@ -754,19 +769,19 @@ fun VideoPlayerScreen(
                     }
 
                     // CC button
-                    TopIconBtn(Icons.Filled.Subtitles,
+                    TopIconBtn(Icons.Outlined.ClosedCaption,
                         tint = if (subTracks.isNotEmpty()) NebulaCyan else Color.White.copy(0.7f)) {
                         showSubSheet = true
                     }
                     // Audio track
-                    TopIconBtn(Icons.Filled.Headset,
+                    TopIconBtn(Icons.Outlined.Headset,
                         tint = if (audTracks.size > 1) NebulaAmber else Color.White.copy(0.7f)) {
                         showAudSheet = true
                     }
                     // Aspect ratio
-                    TopIconBtn(Icons.Filled.AspectRatio) { aspect = AspectMode.entries[(AspectMode.entries.indexOf(aspect) + 1) % 3] }
+                    TopIconBtn(Icons.Outlined.AspectRatio) { aspect = AspectMode.entries[(AspectMode.entries.indexOf(aspect) + 1) % 3] }
                     // Overflow
-                    TopIconBtn(Icons.Filled.MoreVert) { showOverflow = true }
+                    TopIconBtn(Icons.Outlined.MoreVert) { showOverflow = true }
                 }
 
                 // ──── CENTER TRANSPORT ────────────────────────────
@@ -775,30 +790,35 @@ fun VideoPlayerScreen(
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CenterBtn(Icons.Filled.SkipPrevious, 40.dp, 26.dp, idx > 0) { idx-- }
-                    CenterBtn(Icons.Filled.Replay10, 50.dp, 36.dp) {
+                    CenterBtn(Icons.Rounded.SkipPrevious, 40.dp, 28.dp, idx > 0) { idx-- }
+                    CenterBtn(Icons.Rounded.Replay10, 52.dp, 38.dp) {
                         vp.seekTo((vp.currentPosition - 10_000L).coerceAtLeast(0))
                         tapLeft = true; tapLabel = "−10s"; tapTrigger = System.currentTimeMillis()
                     }
-                    // PLAY — dominant
+                    // PLAY — dominant, Playit style: white-filled circle with glassmorphism
                     Box(
-                        Modifier.size(72.dp).clip(CircleShape)
-                            .background(Color.White.copy(0.14f))
-                            .border(2.dp, Color.White.copy(0.72f), CircleShape)
-                            .clickable {
-                                if (vp.isPlaying) { vp.pause(); isPlaying = false }
-                                else              { vp.play();  isPlaying = true  }
-                            },
+                        Modifier.size(68.dp).clip(CircleShape)
+                            .background(Color.White.copy(0.20f))
+                            .border(1.5.dp, Color.White.copy(0.85f), CircleShape)
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = androidx.compose.material.ripple.rememberRipple(
+                                    bounded = true, color = Color.White),
+                                onClick = {
+                                    if (vp.isPlaying) { vp.pause(); isPlaying = false }
+                                    else              { vp.play();  isPlaying = true  }
+                                }
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            null, tint = Color.White, modifier = Modifier.size(36.dp))
+                        Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            null, tint = Color.White, modifier = Modifier.size(34.dp))
                     }
-                    CenterBtn(Icons.Filled.Forward10, 50.dp, 36.dp) {
+                    CenterBtn(Icons.Rounded.Forward10, 52.dp, 38.dp) {
                         vp.seekTo(vp.currentPosition + 10_000L)
                         tapLeft = false; tapLabel = "+10s"; tapTrigger = System.currentTimeMillis()
                     }
-                    CenterBtn(Icons.Filled.SkipNext, 40.dp, 26.dp, idx < videos.size - 1) { idx++ }
+                    CenterBtn(Icons.Rounded.SkipNext, 40.dp, 28.dp, idx < videos.size - 1) { idx++ }
                 }
 
                 // ──── BOTTOM BAR ──────────────────────────────────
@@ -816,27 +836,26 @@ fun VideoPlayerScreen(
                         onMove  = { f -> dragFrac = f },
                         onEnd   = { f -> vp.seekTo((f * dur).toLong()); dragging = false }
                     )
-                    // Controls strip (Playit style)
+                    // Controls strip — glassmorphic, NO solid background
                     Row(
                         Modifier.fillMaxWidth()
-                            .background(Color.Black.copy(0.6f))
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         // Play/pause (small, in bar)
-                        BarBtn(Icons.Filled.PlayArrow.let {
-                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow
-                        }) {
+                        BarBtn(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow) {
                             if (vp.isPlaying) { vp.pause(); isPlaying = false }
                             else              { vp.play();  isPlaying = true  }
                         }
-                        BarBtn(Icons.Filled.SkipPrevious, enabled = idx > 0) { idx-- }
-                        BarBtn(Icons.Filled.SkipNext, enabled = idx < videos.size - 1) { idx++ }
+                        BarBtn(Icons.Rounded.SkipPrevious, enabled = idx > 0) { idx-- }
+                        BarBtn(Icons.Rounded.SkipNext, enabled = idx < videos.size - 1) { idx++ }
                         Spacer(Modifier.weight(1f))
                         // Speed button: tap = picker, long-press = quick ramp through presets
                         val speedPresets = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-                        Box(Modifier.clip(RoundedCornerShape(6.dp))
+                        Box(Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(0.1f))
+                            .border(1.dp, Color.White.copy(0.25f), RoundedCornerShape(8.dp))
                             .combinedClickable(
                                 onClick = { showSpeed = true },
                                 onLongClick = {
@@ -855,12 +874,12 @@ fun VideoPlayerScreen(
                                 fontWeight = FontWeight.SemiBold)
                         }
                         // Aspect ratio
-                        BarBtn(Icons.Filled.AspectRatio) {
+                        BarBtn(Icons.Outlined.AspectRatio) {
                             aspect = AspectMode.entries[(AspectMode.entries.indexOf(aspect) + 1) % 3]
                         }
                         // PiP / resize
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            BarBtn(Icons.Filled.PictureInPicture) {
+                            BarBtn(Icons.Outlined.PictureInPicture) {
                                 try { activity?.enterPictureInPictureMode(
                                     android.app.PictureInPictureParams.Builder()
                                         .setAspectRatio(Rational(16, 9)).build())
@@ -869,7 +888,7 @@ fun VideoPlayerScreen(
                         }
                         // Playlist/queue count
                         if (videos.size > 1) {
-                            BarBtn(Icons.Filled.QueueMusic) { showQueue = true }
+                            BarBtn(Icons.Outlined.QueueMusic) { showQueue = true }
                         }
                     }
                 }
@@ -1123,7 +1142,11 @@ private fun PlayitOverflowSheet(
         Column(
             Modifier.fillMaxWidth().fillMaxHeight(0.72f).align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                .background(Color(0xFF1A1A1A))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xEE0D0D14), Color(0xFF0A0A10))
+                    )
+                )
                 .clickable(enabled = false) {}
         ) {
             // Handle
@@ -1315,14 +1338,14 @@ private fun CircleIconBtn(item: CircleItem) {
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Box(
-            Modifier.size(52.dp).clip(CircleShape)
-                .background(Color.White.copy(0.1f))
-                .border(1.dp, item.tint.copy(0.3f), CircleShape),
+            Modifier.size(56.dp).clip(CircleShape)
+                .background(Color.White.copy(0.08f))
+                .border(1.dp, Color.White.copy(0.18f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(item.icon, null, tint = item.tint, modifier = Modifier.size(24.dp))
+            Icon(item.icon, null, tint = item.tint, modifier = Modifier.size(26.dp))
         }
-        Text(item.label, color = Color.White.copy(0.75f),
+        Text(item.label, color = Color.White.copy(0.9f),
             style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -1427,30 +1450,41 @@ private fun SeekBarSection(
 // SMALL COMPOSABLES
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun SideBtn(icon: ImageVector, tint: Color = Color.White.copy(0.85f), onClick: () -> Unit) {
+private fun SideBtn(icon: ImageVector, tint: Color = Color.White.copy(0.9f), onClick: () -> Unit) {
+    // Playit: bare icon, NO box/card/border — just semi-transparent icon floating
     Box(
-        Modifier.size(42.dp).clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(0.55f))
-            .border(0.5.dp, Color.White.copy(0.12f), RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick),
+        Modifier.size(44.dp).clickable(
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null,
+            onClick = onClick
+        ),
         contentAlignment = Alignment.Center
-    ) { Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp)) }
+    ) {
+        // Subtle shadow behind icon for readability
+        Box(Modifier.size(36.dp).clip(CircleShape)
+            .background(Color.Black.copy(0.25f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        }
+    }
 }
 
 @Composable
-private fun TopIconBtn(icon: ImageVector, tint: Color = Color.White.copy(0.85f), onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+private fun TopIconBtn(icon: ImageVector, tint: Color = Color.White, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(44.dp)) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
     }
 }
 
 @Composable
 private fun TopBadge(text: String) {
-    Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color.White.copy(0.15f))
-        .border(0.5.dp, Color.White.copy(0.3f), RoundedCornerShape(4.dp))
-        .padding(horizontal = 5.dp, vertical = 2.dp)) {
-        Text(text, color = Color.White.copy(0.9f), style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold)
+    // Playit: clean outlined pill, no fill, white border, bold text
+    Box(Modifier.clip(RoundedCornerShape(4.dp))
+        .border(1.dp, Color.White.copy(0.6f), RoundedCornerShape(4.dp))
+        .padding(horizontal = 6.dp, vertical = 2.dp)) {
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
     }
 }
 
@@ -1476,24 +1510,26 @@ private fun CenterBtn(icon: ImageVector, size: Dp, iconSz: Dp, enabled: Boolean 
 
 @Composable
 private fun BarBtn(icon: ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(38.dp)) {
-        Icon(icon, null, tint = if (enabled) Color.White.copy(0.9f) else Color.White.copy(0.25f),
-            modifier = Modifier.size(20.dp))
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(44.dp)) {
+        Icon(icon, null,
+            tint = if (enabled) Color.White.copy(0.95f) else Color.White.copy(0.2f),
+            modifier = Modifier.size(24.dp))
     }
 }
 
 @Composable
 private fun SideHud(icon: ImageVector, value: Float) {
     Column(
-        Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xBB000000))
-            .border(0.5.dp, Color.White.copy(0.1f), RoundedCornerShape(18.dp))
-            .padding(horizontal = 10.dp, vertical = 14.dp).width(40.dp),
+        Modifier.clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(0.12f))
+            .border(1.dp, Color.White.copy(0.25f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 12.dp, vertical = 16.dp).width(44.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Icon(icon, null, tint = Color.White.copy(0.75f), modifier = Modifier.size(15.dp))
         Box(Modifier.width(5.dp).height(80.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(0.15f))) {
             Box(Modifier.fillMaxWidth().fillMaxHeight(value.coerceIn(0f, 1f))
-                .align(Alignment.BottomCenter).clip(RoundedCornerShape(3.dp)).background(NebulaViolet))
+                .align(Alignment.BottomCenter).clip(RoundedCornerShape(3.dp)).background(Color.White))
         }
         Text("${(value * 100).toInt()}", color = Color.White.copy(0.65f), style = MaterialTheme.typography.labelSmall)
     }
